@@ -14,50 +14,48 @@ describe("Saarthi REST Decision API Suite", () => {
   });
 
   it("POST /v1/session/events processes sequence and returns HELP decision on comparison friction", async () => {
-    const sessionId = "api_test_compare_01";
+    const sessionId = `api_compare_eval_${Date.now()}`;
     
-    // Simulate event stream: A -> B -> A -> B
-    const history = [
-      { sessionId, userId: "u1", timestamp: "2026-08-19T08:00:00Z", eventType: "SESSION_START" as const },
-      { sessionId, userId: "u1", timestamp: "2026-08-19T08:00:05Z", eventType: "EVENT_VIEW" as const, entityId: "arsenal", entityName: "Arsenal" },
-      { sessionId, userId: "u1", timestamp: "2026-08-19T08:00:10Z", eventType: "BACK" as const },
-      { sessionId, userId: "u1", timestamp: "2026-08-19T08:00:15Z", eventType: "EVENT_VIEW" as const, entityId: "liverpool", entityName: "Liverpool" },
-      { sessionId, userId: "u1", timestamp: "2026-08-19T08:00:20Z", eventType: "BACK" as const },
-      { sessionId, userId: "u1", timestamp: "2026-08-19T08:00:25Z", eventType: "EVENT_VIEW" as const, entityId: "arsenal", entityName: "Arsenal" },
-      { sessionId, userId: "u1", timestamp: "2026-08-19T08:00:30Z", eventType: "BACK" as const },
+    // Ingest sequential alternation stream: A -> B -> A -> B
+    const sequence = [
+      { eventType: "SESSION_START" as const },
+      { eventType: "EVENT_VIEW" as const, entityId: "arsenal", entityName: "Arsenal" },
+      { eventType: "BACK" as const },
+      { eventType: "EVENT_VIEW" as const, entityId: "liverpool", entityName: "Liverpool" },
+      { eventType: "BACK" as const },
+      { eventType: "EVENT_VIEW" as const, entityId: "arsenal", entityName: "Arsenal" },
+      { eventType: "BACK" as const },
+      { eventType: "EVENT_VIEW" as const, entityId: "liverpool", entityName: "Liverpool" },
     ];
 
-    const req = new NextRequest("http://localhost:3000/api/v1/session/events", {
-      method: "POST",
-      body: JSON.stringify({
-        sessionId,
-        userId: "u1",
-        event: {
-          eventType: "EVENT_VIEW",
-          entityId: "liverpool",
-          entityName: "Liverpool",
-        },
-        history,
-      }),
-    });
+    let lastRes: any;
+    for (const step of sequence) {
+      const req = new NextRequest("http://localhost:3000/api/v1/session/events", {
+        method: "POST",
+        body: JSON.stringify({
+          sessionId,
+          userId: "u1",
+          event: step,
+        }),
+      });
+      const res = await handleEventPost(req);
+      lastRes = await res.json();
+    }
 
-    const res = await handleEventPost(req);
-    const json = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(json.success).toBe(true);
-    expect(json.intent.label).toBe("COMPARE");
-    expect(json.friction.label).toBe("DECISION_HESITATION");
-    expect(json.decision.action).toBe("HELP");
-    expect(json.decision.candidateAction).toBe("COMPARE");
-    expect(json.policy.status).toBe("ALLOWED");
+    expect(lastRes.success).toBe(true);
+    expect(lastRes.intent.label).toBe("COMPARE");
+    expect(lastRes.friction.label).toBe("DECISION_HESITATION");
+    expect(lastRes.decision.action).toBe("HELP");
+    expect(lastRes.decision.candidateAction).toBe("COMPARE");
+    expect(lastRes.decision.netUtilityScore).toBeGreaterThanOrEqual(0.35);
+    expect(lastRes.policy.status).toBe("ALLOWED");
   });
 
   it("POST /v1/interventions/outcome records user dismissal for fatigue calibration", async () => {
     const req = new NextRequest("http://localhost:3000/api/v1/interventions/outcome", {
       method: "POST",
       body: JSON.stringify({
-        sessionId: "api_test_compare_01",
+        sessionId: "api_test_dismiss_01",
         userId: "u1",
         outcome: "DISMISSED",
       }),

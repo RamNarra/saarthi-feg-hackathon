@@ -1,5 +1,5 @@
 import { SessionEvent } from "../types/events";
-import { SessionFeatures } from "../types/models";
+import { SessionFeatures, StructuredSessionState, FrictionType, InterventionAction } from "../types/models";
 
 export function computeSessionFeatures(events: SessionEvent[]): SessionFeatures {
   const startTime = events.length > 0 ? new Date(events[0].timestamp).getTime() : Date.now();
@@ -20,6 +20,8 @@ export function computeSessionFeatures(events: SessionEvent[]): SessionFeatures 
   const entitySequence: string[] = [];
   const entityNameMap = new Map<string, string>();
   const entityVisitCounts = new Map<string, number>();
+  const entityLastVisitTime = new Map<string, number>();
+  const interventionHistory: Array<{ action: InterventionAction; outcome: string; timestamp: string }> = [];
 
   let lastMeaningfulActionTime = startTime;
   let activeEntity: string | undefined;
@@ -41,6 +43,7 @@ export function computeSessionFeatures(events: SessionEvent[]): SessionFeatures 
           entityNameMap.set(ev.entityId, ev.entityName);
         }
         entityVisitCounts.set(ev.entityId, (entityVisitCounts.get(ev.entityId) || 0) + 1);
+        entityLastVisitTime.set(ev.entityId, evTime);
       }
     } else if (ev.eventType === "BACK") {
       backtracks++;
@@ -59,8 +62,18 @@ export function computeSessionFeatures(events: SessionEvent[]): SessionFeatures 
       totalScroll += depth;
     } else if (ev.eventType === "INTERVENTION_DISMISSED") {
       priorInterventionDismissals++;
+      interventionHistory.push({
+        action: (ev.metadata?.actionType as InterventionAction) || "COMPARE",
+        outcome: "DISMISSED",
+        timestamp: ev.timestamp,
+      });
     } else if (ev.eventType === "INTERVENTION_ACCEPTED") {
       priorInterventionAcceptances++;
+      interventionHistory.push({
+        action: (ev.metadata?.actionType as InterventionAction) || "COMPARE",
+        outcome: "ACCEPTED",
+        timestamp: ev.timestamp,
+      });
     }
 
     if (ev.metadata?.sport) {
@@ -106,6 +119,51 @@ export function computeSessionFeatures(events: SessionEvent[]): SessionFeatures 
   const timeSinceMeaningfulActionSec = Math.max(0, Math.round((lastTime - lastMeaningfulActionTime) / 1000));
   const scrollDepthAvg = scrollCount > 0 ? Math.round(totalScroll / scrollCount) : 0;
 
+  // Derive Structured Session State
+  const activeEntities = uniqueEntities.map((id) => ({
+    id,
+    name: entityNameMap.get(id) || id,
+    visitCount: entityVisitCounts.get(id) || 1,
+    lastVisitedSecAgo: Math.max(0, Math.round((lastTime - (entityLastVisitTime.get(id) || lastTime)) / 1000)),
+  }));
+
+  // Identify top comparison pair if any
+  const comparisonSet: Array<{ id: string; name: string }> = [];
+  if (alternationScore >= 0.35 || (uniqueEntitiesCount === 2 && repeatedEntityViews >= 1)) {
+    for (const ent of activeEntities.slice(0, 2)) {
+      comparisonSet.push({ id: ent.id, name: ent.name });
+    }
+  }
+
+  // Infer Journey Stage
+  let journeyStage: StructuredSessionState["journeyStage"] = "EARLY_EXPLORATION";
+  if (interventionHistory.length > 0) {
+    journeyStage = "POST_INTERVENTION";
+  } else if (comparisonSet.length === 2) {
+    journeyStage = "ACTIVE_COMPARISON";
+  } else if (marketSwitchingCount >= 2 || repeatedEntityViews >= 1) {
+    journeyStage = "EVALUATION";
+  } else if (sessionDepth >= 8) {
+    journeyStage = "CONVERGENCE";
+  }
+
+  // Infer Session Goal
+  let inferredGoal = "Exploring premier matchups and live markets";
+  if (comparisonSet.length === 2) {
+    inferredGoal = `Comparing head-to-head metrics for ${comparisonSet[0].name} vs ${comparisonSet[1].name}`;
+  } else if (activeEntityName && marketSwitchingCount >= 2) {
+    inferredGoal = `Evaluating market options for ${activeEntityName}`;
+  }
+
+  const structuredState: StructuredSessionState = {
+    journeyStage,
+    activeEntities,
+    comparisonSet,
+    inferredGoal,
+    frictionHistory: [],
+    interventionHistory,
+  };
+
   return {
     sessionDepth,
     dwellTimeSeconds,
@@ -128,5 +186,6 @@ export function computeSessionFeatures(events: SessionEvent[]): SessionFeatures 
     activeEntity,
     activeEntityName,
     activeCategory,
+    structuredState,
   };
 }

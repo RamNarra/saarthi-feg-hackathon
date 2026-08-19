@@ -46,28 +46,29 @@ export async function POST(req: NextRequest) {
     };
 
     // Option C (Hybrid Authoritative Architecture):
-    // 1. If client sends stateless history, seed any missing historical events into session store
+    let activeEvents: SessionEvent[];
     if (history && history.length > 0) {
+      activeEvents = [...history, incomingEvent];
+      // Seed missing events to store
       const existing = await defaultSessionStore.getEvents(sessionId);
       if (existing.length === 0) {
-        for (const h of history) {
+        for (const h of activeEvents) {
           await defaultSessionStore.appendEvent(sessionId, userId, h);
         }
       }
+    } else {
+      const stateRecord = await defaultSessionStore.appendEvent(sessionId, userId, incomingEvent);
+      activeEvents = stateRecord.events;
     }
 
-    // 2. Authoritative persistence in SessionStore
-    const stateRecord = await defaultSessionStore.appendEvent(sessionId, userId, incomingEvent);
-    const activeEvents = stateRecord.events;
-
-    // 3. Inject authoritative SessionStore context into Governor
+    const sessionState = await defaultSessionStore.getSessionState(sessionId);
     const decisionContext = {
-      cooldownActive: stateRecord.cooldownActive,
-      dismissalCount: stateRecord.dismissalCount,
-      remainingInterventionBudget: stateRecord.remainingInterventionBudget,
+      cooldownActive: sessionState?.cooldownActive,
+      dismissalCount: sessionState?.dismissalCount,
+      remainingInterventionBudget: sessionState?.remainingInterventionBudget,
     };
 
-    // 4. Run Saarthi Decision Engine
+    // Run Saarthi Decision Engine with candidate ranking
     const decisionTrace = runInterventionGovernor(activeEvents, decisionContext);
     const apiLatencyMs = Number((performance.now() - t0).toFixed(3));
 
@@ -89,14 +90,19 @@ export async function POST(req: NextRequest) {
         action: decisionTrace.governorDecision, // HELP | WAIT | DO_NOTHING
         candidateAction: decisionTrace.candidateAction, // COMPARE | EXPLAIN | NARROW | RESUME | ANSWER
         expectedHelpValue: decisionTrace.expectedHelpValue,
+        selectedUtility: decisionTrace.selectedUtility,
+        intrusionCost: decisionTrace.intrusionCost,
+        netUtilityScore: decisionTrace.netUtilityScore,
+        rankedCandidates: decisionTrace.rankedCandidates,
         payload: decisionTrace.actionPayload || null,
       },
       policy: {
         status: decisionTrace.policyStatus, // ALLOWED | BLOCKED | SUPPRESSED
         reason: decisionTrace.policyReason,
-        cooldownActive: stateRecord.cooldownActive,
-        remainingBudget: stateRecord.remainingInterventionBudget,
+        cooldownActive: sessionState?.cooldownActive ?? false,
+        remainingBudget: sessionState?.remainingInterventionBudget ?? 3,
       },
+      structuredState: decisionTrace.structuredState,
       telemetry: {
         engineLatencyMs: decisionTrace.metrics.totalDecisionLatencyMs,
         apiLatencyMs,

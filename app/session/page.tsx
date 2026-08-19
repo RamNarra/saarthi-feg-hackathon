@@ -15,7 +15,7 @@ export default function SessionSimulatorPage() {
   const [activeScenario, setActiveScenario] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [showIntervention, setShowIntervention] = useState<boolean>(false);
-  const [overridePolicyBlock, setOverridePolicyBlock] = useState<boolean>(false);
+  const [internalTestOverride, setInternalTestOverride] = useState<boolean>(false);
   const [userDismissalCount, setUserDismissalCount] = useState<number>(0);
   const [sessionCompleted, setSessionCompleted] = useState<boolean>(false);
 
@@ -41,7 +41,9 @@ export default function SessionSimulatorPage() {
 
     // Run decision engine
     const trace = runInterventionGovernor(nextEvents, {
-      overridePolicyBlock,
+      internalTestOverride,
+      dismissalCount: userDismissalCount,
+      cooldownActive: userDismissalCount >= 1,
     });
     setCurrentTrace(trace);
 
@@ -56,7 +58,7 @@ export default function SessionSimulatorPage() {
     setActiveScenario(null);
     setIsPlaying(false);
     setShowIntervention(false);
-    setOverridePolicyBlock(false);
+    setInternalTestOverride(false);
     setUserDismissalCount(0);
     setSessionCompleted(false);
   };
@@ -160,12 +162,12 @@ export default function SessionSimulatorPage() {
         };
         accEvents = [...accEvents, ev];
         setEvents([...accEvents]);
-        const trace = runInterventionGovernor(accEvents);
+        const trace = runInterventionGovernor(accEvents, { dismissalCount: 2, cooldownActive: true });
         setCurrentTrace(trace);
       }
     } else if (scenario === "D") {
       // Scenario D: Policy Block (Responsible-Play Guard Active)
-      setOverridePolicyBlock(true);
+      setInternalTestOverride(true);
       const scriptEvents: Array<{ type: SessionEvent["eventType"]; id?: string; name?: string }> = [
         { type: "SESSION_START" },
         { type: "EVENT_VIEW", id: "arsenal", name: "Arsenal" },
@@ -188,7 +190,7 @@ export default function SessionSimulatorPage() {
         };
         accEvents = [...accEvents, ev];
         setEvents([...accEvents]);
-        const trace = runInterventionGovernor(accEvents, { overridePolicyBlock: true });
+        const trace = runInterventionGovernor(accEvents, { internalTestOverride: true });
         setCurrentTrace(trace);
       }
     }
