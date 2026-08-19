@@ -32,14 +32,21 @@ export function SessionReplayTimeline({ events, latestTrace }: SessionReplayProp
     }
   };
 
-  // Compute live Session Value score
+  // Compute live Session Value score with strict semantic distinction:
+  // Only GOAL_COMPLETED marks goal completion; INTERVENTION_ACCEPTED feeds satisfaction/helpfulness proxy.
   const sessionFeatures = computeSessionFeatures(events);
-  const isGoalDone = events.some((e) => e.eventType === "GOAL_COMPLETED" || e.eventType === "INTERVENTION_ACCEPTED");
+  const isGoalDone = events.some((e) => e.eventType === "GOAL_COMPLETED");
+  const recordedOutcome = events.some((e) => e.eventType === "INTERVENTION_ACCEPTED")
+    ? "ACCEPTED"
+    : events.some((e) => e.eventType === "INTERVENTION_DISMISSED")
+    ? "DISMISSED"
+    : undefined;
+
   const sessionValue = computeSessionValue(
     sessionFeatures,
     latestTrace ? latestTrace.friction : "NONE",
     latestTrace ? latestTrace.governorDecision : "DO_NOTHING",
-    undefined,
+    recordedOutcome,
     isGoalDone,
     false
   );
@@ -74,7 +81,7 @@ export function SessionReplayTimeline({ events, latestTrace }: SessionReplayProp
               <span>Goal: </span><strong className="text-slate-200">+{sessionValue.goalCompletion.toFixed(2)}</strong>
             </div>
             <div className="p-1 rounded bg-slate-900 border border-slate-800/80">
-              <span>Discovery: </span><strong className="text-slate-200">+{sessionValue.discoveryValue.toFixed(2)}</strong>
+              <span>Satisfaction: </span><strong className="text-slate-200">+{sessionValue.satisfactionProxy.toFixed(2)}</strong>
             </div>
             <div className="p-1 rounded bg-slate-900 border border-slate-800/80">
               <span>Friction: </span><strong className={sessionValue.unresolvedFrictionPenalty > 0 ? "text-rose-400" : "text-emerald-400"}>-{sessionValue.unresolvedFrictionPenalty.toFixed(2)}</strong>
