@@ -64,6 +64,20 @@
       }
     }
   },
+  "/evaluation": {
+    "hints": 0,
+    "slots": {
+      "children": {
+        "hints": 64,
+        "slots": {
+          "children": {
+            "hints": 160,
+            "slots": null
+          }
+        }
+      }
+    }
+  },
   "/impact": {
     "hints": 0,
     "slots": {

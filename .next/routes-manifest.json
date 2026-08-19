@@ -87,6 +87,12 @@
       "namedRegex": "^/architecture(?:/)?$"
     },
     {
+      "page": "/evaluation",
+      "regex": "^/evaluation(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/evaluation(?:/)?$"
+    },
+    {
       "page": "/impact",
       "regex": "^/impact(?:/)?$",
       "routeKeys": {},

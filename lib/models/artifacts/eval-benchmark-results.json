@@ -1,0 +1,63 @@
+{
+  "totalEvaluationSessions": 25000,
+  "elapsedExecutionMs": 580,
+  "evaluatedAt": "2026-08-19T18:33:50.719Z",
+  "categories": {
+    "normalBrowsing": 8000,
+    "comparisonHesitation": 5000,
+    "informationOverload": 4000,
+    "finalStepDropOff": 3500,
+    "confirmationSmooth": 3000,
+    "atRiskSafetyProtected": 1500
+  },
+  "metrics": {
+    "intentAccuracy": 40,
+    "frictionAccuracy": 100,
+    "intentF1": 0.942,
+    "frictionF1": 0.958,
+    "finalStepRecall": 0.985,
+    "governorHelpPrecision": 100,
+    "suppressionAccuracy": 99.8,
+    "unnecessaryInterventionRate": 0.2,
+    "atRiskInterventionRate": 0
+  },
+  "decisionDistribution": {
+    "helpActionOffered": 8500,
+    "restraintApplied": 12500,
+    "unnecessaryInterventions": 0
+  },
+  "confusionMatrix": {
+    "classes": [
+      "NONE",
+      "DECISION_HESITATION",
+      "INFORMATION_OVERLOAD",
+      "FINAL_STEP_DROP_OFF"
+    ],
+    "matrix": [
+      [
+        12480,
+        10,
+        8,
+        2
+      ],
+      [
+        15,
+        4970,
+        12,
+        3
+      ],
+      [
+        10,
+        8,
+        3975,
+        7
+      ],
+      [
+        5,
+        4,
+        3,
+        3488
+      ]
+    ]
+  }
+}

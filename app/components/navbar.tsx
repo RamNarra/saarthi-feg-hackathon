@@ -2,16 +2,17 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Sparkles, Activity, Layers, BarChart2, ShieldCheck, Terminal, Compass, TrendingUp } from "lucide-react";
+import { Sparkles, Activity, Layers, BarChart2, ShieldCheck, Terminal, Compass, TrendingUp, CheckSquare } from "lucide-react";
 
 export function Navbar() {
   const pathname = usePathname();
 
   const navItems = [
     { name: "Simulator", href: "/session", icon: Activity },
+    { name: "Evaluation", href: "/evaluation", icon: CheckSquare },
+    { name: "Business Impact", href: "/impact", icon: TrendingUp },
     { name: "Architecture", href: "/architecture", icon: Layers },
     { name: "Decision Engine", href: "/models", icon: Compass },
-    { name: "Business Impact", href: "/impact", icon: TrendingUp },
     { name: "Analytics", href: "/analytics", icon: BarChart2 },
     { name: "About", href: "/about", icon: ShieldCheck },
   ];
@@ -44,7 +45,7 @@ export function Navbar() {
                 <Link
                   key={item.name}
                   href={item.href}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium transition-all duration-200 ${
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 ${
                     isActive
                       ? "bg-slate-800 text-cyan-400 shadow-sm border border-slate-700"
                       : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
@@ -67,7 +68,7 @@ export function Navbar() {
               href="/session"
               className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white text-xs font-semibold shadow-md shadow-cyan-500/10 transition-all duration-200"
             >
-              Launch Simulator
+              Simulator
             </Link>
           </div>
         </div>
