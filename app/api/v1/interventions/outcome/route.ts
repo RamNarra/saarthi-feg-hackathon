@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { defaultSessionStore } from "@/lib/store/session-store";
 import { z } from "zod";
 
 const OutcomePayloadSchema = z.object({
@@ -22,14 +23,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { sessionId, userId, outcome, feedback } = parsed.data;
+    const { sessionId, userId, outcome } = parsed.data;
 
-    // Record outcome event for fatigue suppression and telemetry
+    // Record outcome event in session store to trigger real fatigue & cooldown calibration
+    const updatedState = await defaultSessionStore.recordOutcome(sessionId, userId, outcome);
+
     return NextResponse.json({
       success: true,
       sessionId,
       recordedOutcome: outcome,
-      fatigueCalibrated: outcome === "DISMISSED",
+      policyState: {
+        cooldownActive: updatedState.cooldownActive,
+        remainingInterventionBudget: updatedState.remainingInterventionBudget,
+        dismissalCount: updatedState.dismissalCount,
+      },
       timestamp: new Date().toISOString(),
     });
   } catch (err: any) {

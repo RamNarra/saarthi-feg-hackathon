@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SessionEventSchema } from "@/lib/types/events";
 import { runInterventionGovernor } from "@/lib/engine/governor";
+import { defaultSessionStore } from "@/lib/store/session-store";
 import { z } from "zod";
 
 const IngestionPayloadSchema = z.object({
@@ -14,14 +15,11 @@ const IngestionPayloadSchema = z.object({
     timestamp: z.string().optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
   }),
-  history: z.array(SessionEventSchema).optional().default([]),
+  history: z.array(SessionEventSchema).optional(),
   config: z.object({
     overridePolicyBlock: z.boolean().optional(),
   }).optional(),
 });
-
-// In-memory session store for API clients
-const sessionStore = new Map<string, any[]>();
 
 export async function POST(req: NextRequest) {
   const t0 = performance.now();
@@ -38,9 +36,6 @@ export async function POST(req: NextRequest) {
 
     const { sessionId, userId, event, history, config } = parsed.data;
 
-    // Append to session timeline
-    const activeEvents = history && history.length > 0 ? [...history] : (sessionStore.get(sessionId) || []);
-    
     const incomingEvent = {
       id: `ev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       sessionId,
@@ -53,8 +48,14 @@ export async function POST(req: NextRequest) {
       metadata: event.metadata || {},
     };
 
-    activeEvents.push(incomingEvent);
-    sessionStore.set(sessionId, activeEvents);
+    // Use SessionStore or client stateless history if supplied
+    let activeEvents: any[];
+    if (history && history.length > 0) {
+      activeEvents = [...history, incomingEvent];
+    } else {
+      const state = await defaultSessionStore.appendEvent(sessionId, userId, incomingEvent);
+      activeEvents = state.events;
+    }
 
     // Run Saarthi Decision Engine
     const decisionTrace = runInterventionGovernor(activeEvents, config);
@@ -106,13 +107,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "sessionId query parameter required" }, { status: 400 });
   }
 
-  const events = sessionStore.get(sessionId) || [];
+  const sessionState = await defaultSessionStore.getSessionState(sessionId);
+  const events = sessionState?.events || [];
   const latestTrace = events.length > 0 ? runInterventionGovernor(events) : null;
 
   return NextResponse.json({
     sessionId,
     eventCount: events.length,
-    events,
+    sessionState,
     latestDecision: latestTrace,
   });
 }

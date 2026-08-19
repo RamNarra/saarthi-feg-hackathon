@@ -68,6 +68,6 @@ describe("Saarthi REST Decision API Suite", () => {
 
     expect(res.status).toBe(200);
     expect(json.recordedOutcome).toBe("DISMISSED");
-    expect(json.fatigueCalibrated).toBe(true);
+    expect(json.policyState.cooldownActive).toBe(true);
   });
 });
