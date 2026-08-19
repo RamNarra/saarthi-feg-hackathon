@@ -1,0 +1,464 @@
+"use client";
+
+import { useState } from "react";
+import { SessionEvent } from "@/lib/types/events";
+import { DecisionTrace } from "@/lib/types/models";
+import { runInterventionGovernor } from "@/lib/engine/governor";
+import { DecisionTracePanel } from "../components/decision-trace";
+import { SessionReplayTimeline } from "../components/session-replay";
+import { InterventionModal } from "../components/intervention-modal";
+import { Play, RotateCcw, ShieldAlert, Sparkles, CheckCircle2, ChevronRight, Search, ArrowLeft, BarChart2, Check, X } from "lucide-react";
+
+export default function SessionSimulatorPage() {
+  const [events, setEvents] = useState<SessionEvent[]>([]);
+  const [currentTrace, setCurrentTrace] = useState<DecisionTrace | null>(null);
+  const [activeScenario, setActiveScenario] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [showIntervention, setShowIntervention] = useState<boolean>(false);
+  const [overridePolicyBlock, setOverridePolicyBlock] = useState<boolean>(false);
+  const [userDismissalCount, setUserDismissalCount] = useState<number>(0);
+  const [sessionCompleted, setSessionCompleted] = useState<boolean>(false);
+
+  const triggerEvent = (
+    eventType: SessionEvent["eventType"],
+    entityId?: string,
+    entityName?: string,
+    metadata?: Record<string, unknown>
+  ) => {
+    const newEvent: SessionEvent = {
+      id: `ev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      sessionId: "sess_sim_01",
+      userId: "usr_active_01",
+      timestamp: new Date().toISOString(),
+      eventType,
+      entityId,
+      entityName,
+      metadata: metadata || {},
+    };
+
+    const nextEvents = [...events, newEvent];
+    setEvents(nextEvents);
+
+    // Run decision engine
+    const trace = runInterventionGovernor(nextEvents, {
+      overridePolicyBlock,
+    });
+    setCurrentTrace(trace);
+
+    if (trace.governorDecision === "HELP" && trace.policyStatus === "ALLOWED") {
+      setShowIntervention(true);
+    }
+  };
+
+  const resetSession = () => {
+    setEvents([]);
+    setCurrentTrace(null);
+    setActiveScenario(null);
+    setIsPlaying(false);
+    setShowIntervention(false);
+    setOverridePolicyBlock(false);
+    setUserDismissalCount(0);
+    setSessionCompleted(false);
+  };
+
+  // Scenario Scripts
+  const runScriptedScenario = async (scenario: "A" | "B" | "C" | "D") => {
+    resetSession();
+    setIsPlaying(true);
+    setActiveScenario(scenario);
+
+    const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
+    if (scenario === "A") {
+      // Scenario A: Normal Browsing -> DO NOTHING
+      const scriptEvents: Array<{ type: SessionEvent["eventType"]; id?: string; name?: string }> = [
+        { type: "SESSION_START" },
+        { type: "EVENT_VIEW", id: "arsenal", name: "Arsenal vs Chelsea" },
+        { type: "STATS_VIEW", id: "arsenal", name: "Match Statistics" },
+        { type: "BACK" },
+        { type: "EVENT_VIEW", id: "man_city", name: "Man City vs Spurs" },
+        { type: "STATS_VIEW", id: "man_city", name: "Spurs Form Guide" },
+      ];
+
+      let accEvents: SessionEvent[] = [];
+      for (const step of scriptEvents) {
+        await delay(500);
+        const ev: SessionEvent = {
+          id: `ev_scA_${Date.now()}`,
+          sessionId: "sess_scA",
+          userId: "usr_scA",
+          timestamp: new Date().toISOString(),
+          eventType: step.type,
+          entityId: step.id,
+          entityName: step.name,
+        };
+        accEvents = [...accEvents, ev];
+        setEvents([...accEvents]);
+        const trace = runInterventionGovernor(accEvents);
+        setCurrentTrace(trace);
+      }
+    } else if (scenario === "B") {
+      // Scenario B: Friction Resolution (Compare loop) -> HELP
+      const scriptEvents: Array<{ type: SessionEvent["eventType"]; id?: string; name?: string }> = [
+        { type: "SESSION_START" },
+        { type: "EVENT_VIEW", id: "arsenal", name: "Arsenal" },
+        { type: "STATS_VIEW", id: "arsenal", name: "Arsenal xG & Squad" },
+        { type: "BACK" },
+        { type: "EVENT_VIEW", id: "liverpool", name: "Liverpool" },
+        { type: "STATS_VIEW", id: "liverpool", name: "Liverpool xG & Form" },
+        { type: "BACK" },
+        { type: "EVENT_VIEW", id: "arsenal", name: "Arsenal" },
+        { type: "MARKET_VIEW", id: "arsenal", name: "Arsenal Markets" },
+        { type: "BACK" },
+        { type: "EVENT_VIEW", id: "liverpool", name: "Liverpool" },
+      ];
+
+      let accEvents: SessionEvent[] = [];
+      for (const step of scriptEvents) {
+        await delay(450);
+        const ev: SessionEvent = {
+          id: `ev_scB_${Date.now()}`,
+          sessionId: "sess_scB",
+          userId: "usr_scB",
+          timestamp: new Date().toISOString(),
+          eventType: step.type,
+          entityId: step.id,
+          entityName: step.name,
+        };
+        accEvents = [...accEvents, ev];
+        setEvents([...accEvents]);
+        const trace = runInterventionGovernor(accEvents);
+        setCurrentTrace(trace);
+        if (trace.governorDecision === "HELP") {
+          setShowIntervention(true);
+        }
+      }
+    } else if (scenario === "C") {
+      // Scenario C: User Rejects Help -> Policy Fatigue Suppression
+      const scriptEvents: Array<{ type: SessionEvent["eventType"]; id?: string; name?: string }> = [
+        { type: "SESSION_START" },
+        { type: "EVENT_VIEW", id: "arsenal", name: "Arsenal" },
+        { type: "INTERVENTION_DISMISSED" },
+        { type: "EVENT_VIEW", id: "liverpool", name: "Liverpool" },
+        { type: "INTERVENTION_DISMISSED" },
+        { type: "EVENT_VIEW", id: "arsenal", name: "Arsenal" },
+        { type: "EVENT_VIEW", id: "liverpool", name: "Liverpool" },
+        { type: "EVENT_VIEW", id: "arsenal", name: "Arsenal" },
+      ];
+
+      let accEvents: SessionEvent[] = [];
+      for (const step of scriptEvents) {
+        await delay(450);
+        const ev: SessionEvent = {
+          id: `ev_scC_${Date.now()}`,
+          sessionId: "sess_scC",
+          userId: "usr_scC",
+          timestamp: new Date().toISOString(),
+          eventType: step.type,
+          entityId: step.id,
+          entityName: step.name,
+        };
+        accEvents = [...accEvents, ev];
+        setEvents([...accEvents]);
+        const trace = runInterventionGovernor(accEvents);
+        setCurrentTrace(trace);
+      }
+    } else if (scenario === "D") {
+      // Scenario D: Policy Block (Responsible-Play Guard Active)
+      setOverridePolicyBlock(true);
+      const scriptEvents: Array<{ type: SessionEvent["eventType"]; id?: string; name?: string }> = [
+        { type: "SESSION_START" },
+        { type: "EVENT_VIEW", id: "arsenal", name: "Arsenal" },
+        { type: "EVENT_VIEW", id: "liverpool", name: "Liverpool" },
+        { type: "EVENT_VIEW", id: "arsenal", name: "Arsenal" },
+        { type: "EVENT_VIEW", id: "liverpool", name: "Liverpool" },
+      ];
+
+      let accEvents: SessionEvent[] = [];
+      for (const step of scriptEvents) {
+        await delay(450);
+        const ev: SessionEvent = {
+          id: `ev_scD_${Date.now()}`,
+          sessionId: "sess_scD",
+          userId: "usr_scD",
+          timestamp: new Date().toISOString(),
+          eventType: step.type,
+          entityId: step.id,
+          entityName: step.name,
+        };
+        accEvents = [...accEvents, ev];
+        setEvents([...accEvents]);
+        const trace = runInterventionGovernor(accEvents, { overridePolicyBlock: true });
+        setCurrentTrace(trace);
+      }
+    }
+
+    setIsPlaying(false);
+  };
+
+  const handleInterventionAccept = () => {
+    setShowIntervention(false);
+    triggerEvent("INTERVENTION_ACCEPTED", "compare_widget", "Side-by-Side Comparison Accepted");
+    setSessionCompleted(true);
+  };
+
+  const handleInterventionDismiss = () => {
+    setShowIntervention(false);
+    setUserDismissalCount((prev) => prev + 1);
+    triggerEvent("INTERVENTION_DISMISSED", "compare_widget", "Intervention Dismissed by User");
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Page Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-6 mb-8">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Live Session Simulator</h1>
+            <span className="text-xs font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+              Interactive Testbed
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-slate-400">
+            Simulate live user events, inspect the decision governor, and observe real-time policy guardrails.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={resetSession}
+            className="px-3.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium transition-colors flex items-center gap-1.5 border border-slate-700"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Reset Session</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Scripted Scenarios Bar */}
+      <div className="p-4 rounded-2xl glass-panel border border-slate-800 mb-8">
+        <div className="text-xs font-mono uppercase tracking-wider text-slate-400 mb-3 flex items-center justify-between">
+          <span>Preset Demo Scenarios</span>
+          <span className="text-[11px] text-cyan-400">Click to run instant sequence</span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <button
+            onClick={() => runScriptedScenario("A")}
+            disabled={isPlaying}
+            className={`p-3 rounded-xl border text-left transition-all ${
+              activeScenario === "A"
+                ? "bg-slate-800 border-cyan-500 text-white"
+                : "bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-300"
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-bold font-mono text-cyan-400">Scenario A</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">DO NOTHING</span>
+            </div>
+            <div className="text-xs font-semibold text-white">Normal Browsing</div>
+            <div className="text-[11px] text-slate-400 mt-1">Fluent navigation without friction. Demonstrates restraint.</div>
+          </button>
+
+          <button
+            onClick={() => runScriptedScenario("B")}
+            disabled={isPlaying}
+            className={`p-3 rounded-xl border text-left transition-all ${
+              activeScenario === "B"
+                ? "bg-slate-800 border-emerald-500 text-white"
+                : "bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-300"
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-bold font-mono text-emerald-400">Scenario B</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 font-mono font-bold">HELP</span>
+            </div>
+            <div className="text-xs font-semibold text-white">Friction Resolution</div>
+            <div className="text-[11px] text-slate-400 mt-1">Repeated alternation (A⇄B) triggers side-by-side comparison.</div>
+          </button>
+
+          <button
+            onClick={() => runScriptedScenario("C")}
+            disabled={isPlaying}
+            className={`p-3 rounded-xl border text-left transition-all ${
+              activeScenario === "C"
+                ? "bg-slate-800 border-amber-500 text-white"
+                : "bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-300"
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-bold font-mono text-amber-400">Scenario C</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 font-mono">SUPPRESSED</span>
+            </div>
+            <div className="text-xs font-semibold text-white">User Dismissal Fatigue</div>
+            <div className="text-[11px] text-slate-400 mt-1">Repeated dismissal suppresses future interruptions.</div>
+          </button>
+
+          <button
+            onClick={() => runScriptedScenario("D")}
+            disabled={isPlaying}
+            className={`p-3 rounded-xl border text-left transition-all ${
+              activeScenario === "D"
+                ? "bg-slate-800 border-rose-500 text-white"
+                : "bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-300"
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-bold font-mono text-rose-400">Scenario D</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 font-mono font-bold">BLOCKED</span>
+            </div>
+            <div className="text-xs font-semibold text-white">Policy / Agency Guard</div>
+            <div className="text-[11px] text-slate-400 mt-1">Responsible-play guard explicitly blocks candidate action.</div>
+          </button>
+        </div>
+      </div>
+
+      {/* Main Grid: Interactive App Simulator + Replay + Decision Trace */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left Column: Interactive App Mockup (4 cols) */}
+        <div className="lg:col-span-4 p-5 rounded-2xl glass-panel border border-slate-800 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
+                <h3 className="text-xs font-mono font-semibold text-slate-200 uppercase">Sports App Viewport</h3>
+              </div>
+              <span className="text-[10px] font-mono text-slate-400">Premier League</span>
+            </div>
+
+            {/* Simulated Entities */}
+            <div className="space-y-2.5">
+              <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 hover:border-slate-700 transition-all">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-white text-sm">Arsenal FC</span>
+                  <span className="text-xs font-mono text-emerald-400">1st • 58 pts</span>
+                </div>
+                <div className="mt-2.5 flex items-center gap-2">
+                  <button
+                    onClick={() => triggerEvent("EVENT_VIEW", "arsenal", "Arsenal FC")}
+                    className="px-2.5 py-1 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/30 text-[11px] font-medium hover:bg-cyan-900 transition-colors"
+                  >
+                    View Match
+                  </button>
+                  <button
+                    onClick={() => triggerEvent("STATS_VIEW", "arsenal", "Arsenal xG & Squad")}
+                    className="px-2.5 py-1 rounded bg-slate-800 text-slate-300 text-[11px] hover:bg-slate-700 transition-colors"
+                  >
+                    Stats
+                  </button>
+                  <button
+                    onClick={() => triggerEvent("MARKET_VIEW", "arsenal", "Arsenal Markets")}
+                    className="px-2.5 py-1 rounded bg-slate-800 text-slate-300 text-[11px] hover:bg-slate-700 transition-colors"
+                  >
+                    Markets
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 hover:border-slate-700 transition-all">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-white text-sm">Liverpool FC</span>
+                  <span className="text-xs font-mono text-cyan-400">2nd • 56 pts</span>
+                </div>
+                <div className="mt-2.5 flex items-center gap-2">
+                  <button
+                    onClick={() => triggerEvent("EVENT_VIEW", "liverpool", "Liverpool FC")}
+                    className="px-2.5 py-1 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/30 text-[11px] font-medium hover:bg-cyan-900 transition-colors"
+                  >
+                    View Match
+                  </button>
+                  <button
+                    onClick={() => triggerEvent("STATS_VIEW", "liverpool", "Liverpool xG & Squad")}
+                    className="px-2.5 py-1 rounded bg-slate-800 text-slate-300 text-[11px] hover:bg-slate-700 transition-colors"
+                  >
+                    Stats
+                  </button>
+                  <button
+                    onClick={() => triggerEvent("MARKET_VIEW", "liverpool", "Liverpool Markets")}
+                    className="px-2.5 py-1 rounded bg-slate-800 text-slate-300 text-[11px] hover:bg-slate-700 transition-colors"
+                  >
+                    Markets
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 hover:border-slate-700 transition-all">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-white text-sm">Manchester City</span>
+                  <span className="text-xs font-mono text-blue-400">3rd • 54 pts</span>
+                </div>
+                <div className="mt-2.5 flex items-center gap-2">
+                  <button
+                    onClick={() => triggerEvent("EVENT_VIEW", "man_city", "Manchester City")}
+                    className="px-2.5 py-1 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/30 text-[11px] font-medium hover:bg-cyan-900 transition-colors"
+                  >
+                    View Match
+                  </button>
+                  <button
+                    onClick={() => triggerEvent("STATS_VIEW", "man_city", "Man City Stats")}
+                    className="px-2.5 py-1 rounded bg-slate-800 text-slate-300 text-[11px] hover:bg-slate-700 transition-colors"
+                  >
+                    Stats
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Action Navigation Buttons */}
+            <div className="mt-4 pt-4 border-t border-slate-800/80 flex items-center justify-between gap-2">
+              <button
+                onClick={() => triggerEvent("BACK")}
+                className="flex-1 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition-colors flex items-center justify-center gap-1"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back</span>
+              </button>
+              <button
+                onClick={() => triggerEvent("SEARCH", "search_q", "Reformulated Search Query")}
+                className="flex-1 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition-colors flex items-center justify-center gap-1"
+              >
+                <Search className="w-3.5 h-3.5" />
+                <span>Search</span>
+              </button>
+              <button
+                onClick={() => {
+                  triggerEvent("GOAL_COMPLETED", "goal_done", "Session Goal Finished");
+                  setSessionCompleted(true);
+                }}
+                className="flex-1 px-3 py-1.5 rounded-lg bg-emerald-950 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-900 text-xs font-medium transition-colors flex items-center justify-center gap-1"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Save</span>
+              </button>
+            </div>
+          </div>
+
+          {sessionCompleted && (
+            <div className="mt-4 p-3 rounded-xl bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span><strong>High-Value Session Completed:</strong> User achieved legitimate goal with zero pressure.</span>
+            </div>
+          )}
+        </div>
+
+        {/* Center Column: Session Replay Timeline (4 cols) */}
+        <div className="lg:col-span-4">
+          <SessionReplayTimeline events={events} latestTrace={currentTrace} />
+        </div>
+
+        {/* Right Column: Live Decision Trace (4 cols) */}
+        <div className="lg:col-span-4">
+          <DecisionTracePanel trace={currentTrace} isRunning={isPlaying} />
+        </div>
+      </div>
+
+      {/* Pop-up Intervention Modal */}
+      {showIntervention && (
+        <InterventionModal
+          trace={currentTrace}
+          onAccept={handleInterventionAccept}
+          onDismiss={handleInterventionDismiss}
+        />
+      )}
+    </div>
+  );
+}

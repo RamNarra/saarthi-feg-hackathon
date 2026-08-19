@@ -1,0 +1,16 @@
+{
+  "total_sessions": 5000,
+  "friction_distribution": {
+    "DECISION_HESITATION": 1231,
+    "INFORMATION_OVERLOAD": 770,
+    "NONE": 2462,
+    "NAVIGATION": 537
+  },
+  "intent_distribution": {
+    "COMPARE": 1231,
+    "RESEARCH": 2489,
+    "DISCOVER": 1280
+  },
+  "benchmark_type": "Illustrative synthetic benchmark",
+  "generated_at": "2026-08-19T08:00:00Z"
+}
