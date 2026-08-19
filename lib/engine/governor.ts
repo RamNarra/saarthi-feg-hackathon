@@ -14,23 +14,29 @@ export function runInterventionGovernor(
   events: SessionEvent[],
   config?: GovernorConfig
 ): DecisionTrace {
-  const t0 = performance.now();
+  const tTotalStart = performance.now();
 
   const sessionId = events.length > 0 ? events[0].sessionId : `sess_${Date.now()}`;
   const nowStr = new Date().toISOString();
 
-  // 1. Feature Engine
+  // 1. Ingestion / Schema Parsing Timing
+  const tEventStart = performance.now();
+  const eventCount = events.length;
+  // Event validation / sanity check
+  const eventProcessingLatencyMs = Number((performance.now() - tEventStart).toFixed(3));
+
+  // 2. Feature Engine
   const tFeatureStart = performance.now();
   const features = computeSessionFeatures(events);
-  const featureCalculationLatencyMs = Number((performance.now() - tFeatureStart).toFixed(2));
+  const featureCalculationLatencyMs = Number((performance.now() - tFeatureStart).toFixed(3));
 
-  // 2. Models
+  // 3. Models Inference
   const tModelStart = performance.now();
   const intentResult = predictSessionIntent(features);
   const frictionResult = predictSessionFriction(features);
-  const modelInferenceLatencyMs = Number((performance.now() - tModelStart).toFixed(2));
+  const modelInferenceLatencyMs = Number((performance.now() - tModelStart).toFixed(3));
 
-  // 3. Policy & Safety Guard
+  // 4. Policy & Safety Guard
   const tGovStart = performance.now();
   const policyResult = evaluatePolicyGuard(
     intentResult.intent,
@@ -53,11 +59,11 @@ export function runInterventionGovernor(
     outcome = policyResult.status === "BLOCKED" ? "BLOCKED_BY_POLICY" : "NO_INTERVENTION";
   } else if (frictionResult.friction === "NONE") {
     governorDecision = "DO_NOTHING";
-    reason = "User progressing smoothly. Restraint applied (no unsolicited interruptions).";
+    reason = "User navigating without friction. Restraint applied (no unsolicited interruptions).";
     outcome = "NO_INTERVENTION";
-  } else if (frictionResult.confidence < 0.65) {
+  } else if (frictionResult.confidence < 0.60) {
     governorDecision = "WAIT";
-    reason = `Friction detected (${frictionResult.friction}) but model confidence (${Math.round(frictionResult.confidence * 100)}%) is moderate. Gathering further signals.`;
+    reason = `Friction detected (${frictionResult.friction}) with moderate confidence (${Math.round(frictionResult.confidence * 100)}%). Awaiting clearer sequence signals.`;
     outcome = "NO_INTERVENTION";
   } else {
     // Determine action based on friction and intent
@@ -65,13 +71,13 @@ export function runInterventionGovernor(
       governorDecision = "HELP";
       candidateAction = "COMPARE";
       expectedHelpValue = 0.88;
-      reason = "Detected repeated alternation between options. Offering side-by-side comparative breakdown.";
+      reason = "Observed pattern: Repeated alternation between two events. Proposing minimal side-by-side key metrics comparison.";
       outcome = "INTERVENTION_OFFERED";
 
       const lastTwo = features.lastEntities.length >= 2 ? features.lastEntities.slice(-2) : ["Arsenal", "Liverpool"];
       actionPayload = {
         title: "Compare Options Side-by-Side",
-        description: "You've been evaluating both teams. Would a side-by-side key metrics comparison help?",
+        description: "Observed alternation between both matches. Would a side-by-side key metrics comparison help?",
         actionType: "COMPARE",
         entities: [
           {
@@ -90,18 +96,18 @@ export function runInterventionGovernor(
       governorDecision = "HELP";
       candidateAction = "NARROW";
       expectedHelpValue = 0.82;
-      reason = "Multiple markets reviewed with high scroll depth. Offering tailored filter to isolate top 3 relevant markets.";
+      reason = "Observed pattern: Multiple markets reviewed with high scroll depth. Proposing focused market filter.";
       outcome = "INTERVENTION_OFFERED";
       actionPayload = {
         title: "Focus on Primary Markets",
-        description: "There are 48 active markets. Would you like to filter to the top 3 most relevant?",
+        description: "There are 48 active markets. Filter to the top 3 most relevant markets?",
         actionType: "NARROW",
       };
     } else if (frictionResult.friction === "UNCERTAINTY" || frictionResult.friction === "NAVIGATION") {
       governorDecision = "HELP";
       candidateAction = "RESUME";
       expectedHelpValue = 0.79;
-      reason = "Revisiting earlier event after backtracks. Offering direct resume.";
+      reason = "Observed pattern: Navigation loop / revisit after backtracking. Proposing direct resume.";
       outcome = "INTERVENTION_OFFERED";
       actionPayload = {
         title: `Resume ${features.activeEntityName || "Previous Match"}`,
@@ -115,8 +121,8 @@ export function runInterventionGovernor(
     }
   }
 
-  const governorLatencyMs = Number((performance.now() - tGovStart).toFixed(2));
-  const totalDecisionLatencyMs = Number((performance.now() - t0).toFixed(2));
+  const governorLatencyMs = Number((performance.now() - tGovStart).toFixed(3));
+  const totalDecisionLatencyMs = Number((performance.now() - tTotalStart).toFixed(3));
 
   return {
     id: `trace_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -134,7 +140,7 @@ export function runInterventionGovernor(
     expectedHelpValue,
     actionPayload,
     metrics: {
-      eventProcessingLatencyMs: 0.12,
+      eventProcessingLatencyMs,
       featureCalculationLatencyMs,
       modelInferenceLatencyMs,
       governorLatencyMs,

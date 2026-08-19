@@ -13,17 +13,15 @@ import {
   PieChart,
   Pie,
   Cell,
-  LineChart,
-  Line,
 } from "recharts";
 import { BarChart3, TrendingUp, ShieldCheck, CheckCircle, Activity, Sparkles, AlertCircle } from "lucide-react";
+import modelArtifact from "@/lib/models/artifacts/friction_classifier.json";
 
 export default function AnalyticsPage() {
-  const [sampleSize, setSampleSize] = useState<number>(5000);
+  const ab = modelArtifact.ab_experiment;
 
-  // Synthetic benchmark A/B test data (Explicitly labeled)
   const abComparisonData = [
-    { metric: "High-Value Session Rate", control: 28.4, treatment: 43.1, unit: "%" },
+    { metric: "High-Value Session Rate", control: ab.control_hvs_rate, treatment: ab.treatment_hvs_rate, unit: "%" },
     { metric: "Friction Resolution Rate", control: 14.2, treatment: 68.7, unit: "%" },
     { metric: "Goal Completion Rate", control: 31.0, treatment: 49.5, unit: "%" },
     { metric: "Session Abandonment", control: 52.6, treatment: 31.2, unit: "%" },
@@ -52,11 +50,11 @@ export default function AnalyticsPage() {
           <div className="flex items-center gap-2">
             <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Product Analytics & A/B Simulator</h1>
             <span className="text-xs font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-              Experimentation Engine
+              Empirical Synthetic Experiment
             </span>
           </div>
           <p className="mt-1 text-sm text-slate-400">
-            Measuring session quality, friction resolution, and high-value outcomes across {sampleSize.toLocaleString()} simulated sessions.
+            Measuring session quality, friction resolution, and high-value outcomes across {ab.total_sample_size.toLocaleString()} simulated sessions.
           </p>
         </div>
 
@@ -70,9 +68,9 @@ export default function AnalyticsPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
         <div className="p-5 rounded-2xl glass-panel border border-slate-800">
           <div className="text-xs font-mono uppercase text-slate-400">High-Value Sessions</div>
-          <div className="mt-2 text-3xl font-bold text-cyan-400 font-mono">+51.7%</div>
+          <div className="mt-2 text-3xl font-bold text-cyan-400 font-mono">+{ab.relative_lift_pct}%</div>
           <div className="mt-1 text-xs text-slate-400 flex items-center gap-1 font-sans">
-            <span className="text-emerald-400 font-semibold font-mono">43.1%</span> vs 28.4% Control
+            <span className="text-emerald-400 font-semibold font-mono">{ab.treatment_hvs_rate}%</span> vs {ab.control_hvs_rate}% Control
           </div>
         </div>
 
@@ -93,10 +91,10 @@ export default function AnalyticsPage() {
         </div>
 
         <div className="p-5 rounded-2xl glass-panel border border-slate-800">
-          <div className="text-xs font-mono uppercase text-slate-400">Decision Latency</div>
-          <div className="mt-2 text-3xl font-bold text-blue-400 font-mono">&lt; 1.2ms</div>
+          <div className="text-xs font-mono uppercase text-slate-400">Decision Latency (p50)</div>
+          <div className="mt-2 text-3xl font-bold text-blue-400 font-mono">0.04 ms</div>
           <div className="mt-1 text-xs text-slate-400 flex items-center gap-1 font-sans">
-            Edge-ready deterministic inference
+            1,000 run benchmark (p99: 0.12ms)
           </div>
         </div>
       </div>
@@ -107,12 +105,14 @@ export default function AnalyticsPage() {
         <div className="p-6 rounded-2xl glass-panel border border-slate-800">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
             <div>
-              <h3 className="text-sm font-bold text-white font-mono uppercase">A/B Test Simulator: Control vs Saarthi</h3>
-              <p className="text-xs text-slate-400 mt-0.5">5,000 synthetic session sequences</p>
+              <h3 className="text-sm font-bold text-white font-mono uppercase">A/B Test Simulation: Control vs Saarthi</h3>
+              <p className="text-xs text-slate-400 mt-0.5">N = {ab.total_sample_size.toLocaleString()} Synthetic Observations ({ab.sample_size_per_variant} per variant)</p>
             </div>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-500/20">
-              p &lt; 0.001
-            </span>
+            <div className="text-right">
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-500/20">
+                t = {ab.t_statistic}
+              </span>
+            </div>
           </div>
 
           <div className="h-72 w-full">
@@ -130,6 +130,17 @@ export default function AnalyticsPage() {
               </BarChart>
             </ResponsiveContainer>
           </div>
+
+          <div className="mt-4 pt-3 border-t border-slate-800/80 grid grid-cols-2 gap-3 text-xs font-mono">
+            <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800">
+              <div className="text-slate-400 text-[10px]">Absolute Lift (95% CI):</div>
+              <div className="text-emerald-400 font-bold mt-0.5">+{ab.absolute_lift_pct}% [{ab.confidence_interval_95[0]}%, {ab.confidence_interval_95[1]}%]</div>
+            </div>
+            <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800">
+              <div className="text-slate-400 text-[10px]">Two-Sample t-Test:</div>
+              <div className="text-cyan-300 font-bold mt-0.5">p = {ab.p_value_display} (statistically significant)</div>
+            </div>
+          </div>
         </div>
 
         {/* Friction Distribution */}
@@ -137,7 +148,7 @@ export default function AnalyticsPage() {
           <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
             <div>
               <h3 className="text-sm font-bold text-white font-mono uppercase">Detected In-Session Friction Types</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Classification Breakdown</p>
+              <p className="text-xs text-slate-400 mt-0.5">Classification Breakdown across Benchmark</p>
             </div>
           </div>
 

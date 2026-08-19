@@ -4,3 +4,4 @@ dist
 .env*.local
 *.log
 ml/data/synthetic_sessions_5000.json
+.vercel
