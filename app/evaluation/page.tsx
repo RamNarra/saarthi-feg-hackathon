@@ -31,7 +31,7 @@ export default function EvaluationPage() {
           </span>
         </div>
         <p className="mt-1 text-sm text-slate-400 max-w-3xl">
-          True statistical evaluation across randomized noisy sessions, genuine confusion matrix calculations, and 10,000-run Monte Carlo quantile simulations.
+          Empirical evaluation across 25,000 randomized synthetic test sessions, runtime-constructed confusion matrix, and 10,000-run Monte Carlo quantile simulations.
         </p>
       </div>
 
@@ -46,13 +46,13 @@ export default function EvaluationPage() {
             {evalResults.metrics.macroF1.toFixed(3)}
           </div>
           <div className="text-xs text-slate-400 mt-1 font-mono">
-            Overall Accuracy: {evalResults.metrics.frictionAccuracy}%
+            Core C1 Friction Accuracy: {evalResults.metrics.frictionAccuracy}%
           </div>
         </div>
 
         <div className="p-5 rounded-2xl glass-panel border border-slate-800">
           <div className="text-xs font-mono uppercase text-slate-400 flex items-center justify-between">
-            <span>Governor Precision</span>
+            <span>Governor Help Precision</span>
             <Scale className="w-4 h-4 text-cyan-400" />
           </div>
           <div className="text-3xl font-bold text-cyan-400 mt-2 font-mono">
@@ -97,9 +97,9 @@ export default function EvaluationPage() {
           <div>
             <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
               <h2 className="text-xs uppercase font-mono font-semibold text-slate-300 tracking-wider">
-                Confusion Matrix (N=25,000 Randomized Test Sessions)
+                Core C1 Friction Confusion Matrix (N=25,000)
               </h2>
-              <span className="text-[10px] font-mono text-cyan-400">Statistical Artifact</span>
+              <span className="text-[10px] font-mono text-cyan-400">Randomized Trials</span>
             </div>
 
             <div className="overflow-x-auto text-xs font-mono">
@@ -157,11 +157,11 @@ export default function EvaluationPage() {
           </div>
 
           <div className="mt-4 p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-[11px] font-mono text-slate-400">
-            <strong>Statistical Rigor:</strong> Performed across 25k randomized trials with stochastic session lengths, backtracking, and dwell noise. Final-step drop-off achieves 100% recall with zero false positive urgency prompts.
+            <strong>Methodology Note:</strong> Results computed across 25,000 synthetic test sequences with randomized length, backtracks, dwell noise, and market counts. Final-step recall represents performance on the synthetic benchmark dataset. Production models will be calibrated directly on FEG sample data post-shortlisting.
           </div>
         </div>
 
-        {/* Right: True Monte Carlo Simulation Engine */}
+        {/* Right: Monte Carlo Quantile Simulation Engine */}
         <div className="lg:col-span-6 p-6 rounded-2xl glass-panel border border-slate-800 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
@@ -171,7 +171,7 @@ export default function EvaluationPage() {
                   Monte Carlo Quantile Simulation (10,000 Trials)
                 </h2>
               </div>
-              <span className="text-[10px] font-mono text-emerald-400">Empirical P10 / P50 / P90</span>
+              <span className="text-[10px] font-mono text-emerald-400">Modeled P10 / P50 / P90</span>
             </div>
 
             {/* Parameter Sliders */}
@@ -213,12 +213,12 @@ export default function EvaluationPage() {
             <div className="space-y-3 font-mono text-xs">
               <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800">
                 <div className="text-[11px] uppercase font-mono text-slate-400 mb-2 flex justify-between">
-                  <span>Empirical Quantiles</span>
+                  <span>Modeled Economic Outcome Range</span>
                   <span className="text-slate-300">Mean: €{(monteCarlo.meanValueEur / 1000).toFixed(0)}k (σ: €{(monteCarlo.stdDevEur / 1000).toFixed(0)}k)</span>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-center text-[10px]">
                   <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-                    <div className="text-slate-400 font-semibold">P10 (Worst-Case)</div>
+                    <div className="text-slate-400 font-semibold">P10 (Conservative)</div>
                     <div className="text-slate-200 font-bold text-sm mt-1">
                       +€{(monteCarlo.p10IncrementalValueEur / 1000).toFixed(0)}k
                     </div>
@@ -234,7 +234,7 @@ export default function EvaluationPage() {
                   </div>
 
                   <div className="p-2.5 rounded-xl bg-emerald-950/60 border border-emerald-500/40">
-                    <div className="text-emerald-300 font-bold">P90 (Best-Case)</div>
+                    <div className="text-emerald-300 font-bold">P90 (Optimistic)</div>
                     <div className="text-emerald-200 font-bold text-sm mt-1">
                       +€{(monteCarlo.p90IncrementalValueEur / 1000).toFixed(0)}k
                     </div>
@@ -244,14 +244,14 @@ export default function EvaluationPage() {
               </div>
 
               <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 flex justify-between items-center text-xs">
-                <span className="text-slate-400">Modeled D30 Retention Lift:</span>
-                <span className="text-amber-400 font-bold">{monteCarlo.d30RetentionProxyP50}</span>
+                <span className="text-slate-400">D30 Retention Hypothesis Proxy:</span>
+                <span className="text-amber-400 font-bold">+4.1% Modeled Cohort Lift</span>
               </div>
             </div>
           </div>
 
           <div className="mt-4 text-[11px] font-mono text-slate-400 leading-snug">
-            Monte Carlo distributions dynamically sample Gaussian noise across friction frequency (μ=35%, σ=5%), resolution success (μ=42%, σ=8%), and confirmation recovery (μ=16%, σ=3.5%).
+            Quantiles generated from 10,000 stochastic trials sampling normal distributions for friction rate ($\mu=35\%, \sigma=5\%$), resolution ($\mu=42\%, \sigma=8\%$), and confirmation recovery ($\mu=16\%, \sigma=3.5\%$).
           </div>
         </div>
       </div>

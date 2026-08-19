@@ -2,111 +2,121 @@
 
 import { SessionEvent } from "@/lib/types/events";
 import { DecisionTrace } from "@/lib/types/models";
-import { Clock, CheckCircle, AlertCircle, ArrowRight, Eye, RefreshCw, Zap } from "lucide-react";
+import { computeSessionValue } from "@/lib/engine/session-value";
+import { computeSessionFeatures } from "@/lib/engine/feature-engine";
+import { Clock, Eye, RotateCcw, BarChart2, Layers, Search, Sparkles, CheckCircle2, AlertCircle, TrendingUp } from "lucide-react";
 
 interface SessionReplayProps {
   events: SessionEvent[];
   latestTrace: DecisionTrace | null;
-  onSelectEventIndex?: (index: number) => void;
-  selectedIndex?: number;
 }
 
-export function SessionReplayTimeline({
-  events,
-  latestTrace,
-  onSelectEventIndex,
-  selectedIndex,
-}: SessionReplayProps) {
-  if (events.length === 0) {
-    return (
-      <div className="p-6 rounded-2xl glass-panel border border-slate-800 flex flex-col items-center justify-center min-h-[380px] text-center">
-        <Clock className="w-8 h-8 text-slate-400 mb-3" />
-        <h3 className="text-sm font-semibold text-slate-300">Session Replay Timeline</h3>
-        <p className="text-xs text-slate-400 max-w-xs mt-1">
-          As events occur in the session, reconstructed chronological milestones will appear here.
-        </p>
-      </div>
-    );
-  }
-
-  const getEventBadge = (type: string) => {
+export function SessionReplayTimeline({ events, latestTrace }: SessionReplayProps) {
+  const getEventIcon = (type: string) => {
     switch (type) {
       case "EVENT_VIEW":
-        return <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20 text-[10px] font-mono">EVENT_VIEW</span>;
-      case "STATS_VIEW":
-        return <span className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 text-[10px] font-mono">STATS_VIEW</span>;
-      case "MARKET_VIEW":
-        return <span className="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 text-[10px] font-mono">MARKET_VIEW</span>;
+        return <Eye className="w-3.5 h-3.5 text-cyan-400" />;
       case "BACK":
-        return <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 text-[10px] font-mono">BACKTRACK</span>;
-      case "INTERVENTION_SHOWN":
-        return <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-mono font-bold">HELP OFFERED</span>;
+        return <RotateCcw className="w-3.5 h-3.5 text-amber-400" />;
+      case "MARKET_VIEW":
+      case "STATS_VIEW":
+        return <BarChart2 className="w-3.5 h-3.5 text-indigo-400" />;
+      case "SEARCH":
+        return <Search className="w-3.5 h-3.5 text-emerald-400" />;
       case "INTERVENTION_ACCEPTED":
-        return <span className="px-2 py-0.5 rounded bg-emerald-500/30 text-emerald-200 border border-emerald-500/40 text-[10px] font-mono font-bold">ACCEPTED</span>;
+        return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />;
       case "INTERVENTION_DISMISSED":
-        return <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[10px] font-mono font-bold">DISMISSED</span>;
+        return <AlertCircle className="w-3.5 h-3.5 text-amber-400" />;
       default:
-        return <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 text-[10px] font-mono">{type}</span>;
+        return <Clock className="w-3.5 h-3.5 text-slate-400" />;
     }
   };
 
+  // Compute live Session Value score
+  const sessionFeatures = computeSessionFeatures(events);
+  const isGoalDone = events.some((e) => e.eventType === "GOAL_COMPLETED" || e.eventType === "INTERVENTION_ACCEPTED");
+  const sessionValue = computeSessionValue(
+    sessionFeatures,
+    latestTrace ? latestTrace.friction : "NONE",
+    latestTrace ? latestTrace.governorDecision : "DO_NOTHING",
+    undefined,
+    isGoalDone,
+    false
+  );
+
   return (
-    <div className="p-5 rounded-2xl glass-panel border border-slate-800 flex flex-col h-full">
-      <div className="flex items-center justify-between border-b border-slate-800/80 pb-3 mb-3">
-        <div className="flex items-center gap-2">
-          <Clock className="w-4 h-4 text-cyan-400" />
-          <h3 className="text-xs font-mono font-semibold text-slate-200 uppercase tracking-wide">
-            Reconstructed Timeline ({events.length} events)
-          </h3>
+    <div className="p-5 rounded-2xl glass-panel border border-slate-800 flex flex-col justify-between h-full">
+      <div>
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+          <div className="flex items-center gap-2">
+            <Layers className="w-4 h-4 text-cyan-400" />
+            <h3 className="text-xs font-mono font-semibold text-slate-200 uppercase">Session Telemetry Stream</h3>
+          </div>
+          <span className="text-[11px] font-mono text-cyan-400">
+            {events.length} Events Logged
+          </span>
         </div>
-        <span className="text-[10px] font-mono text-slate-400">Interactive Replay</span>
-      </div>
 
-      <div className="flex-1 overflow-y-auto space-y-2 max-h-[320px] pr-1 custom-scrollbar">
-        {events.map((ev, idx) => {
-          const isCurrent = selectedIndex === idx || (selectedIndex === undefined && idx === events.length - 1);
-          const timeFormatted = ev.timestamp.slice(11, 19);
-
-          return (
-            <div
-              key={idx}
-              onClick={() => onSelectEventIndex && onSelectEventIndex(idx)}
-              className={`p-2.5 rounded-xl border text-xs font-mono transition-all cursor-pointer flex items-center justify-between ${
-                isCurrent
-                  ? "bg-cyan-950/40 border-cyan-500/50 shadow-sm"
-                  : "bg-slate-950/40 border-slate-800/80 hover:bg-slate-900/60 hover:border-slate-700"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-slate-400 text-[10px]">{timeFormatted}</span>
-                {getEventBadge(ev.eventType)}
-                <span className="text-slate-300 font-sans text-xs truncate max-w-[160px]">
-                  {ev.entityName || ev.entityId || "Session action"}
-                </span>
-              </div>
-
-              <div className="text-[10px] text-slate-400">
-                #{idx + 1}
-              </div>
+        {/* Live Value per Session Meter */}
+        <div className="mb-4 p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+          <div className="flex items-center justify-between text-xs font-mono mb-1">
+            <span className="text-slate-400 flex items-center gap-1.5">
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+              Value per Session (FEG C1 Metric):
+            </span>
+            <strong className="text-emerald-400 text-sm font-bold">{sessionValue.totalSessionValue.toFixed(2)} / 1.00</strong>
+          </div>
+          <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mb-2">
+            <div className="bg-emerald-400 h-full rounded-full transition-all duration-300" style={{ width: `${sessionValue.totalSessionValue * 100}%` }}></div>
+          </div>
+          <div className="grid grid-cols-3 gap-1 text-[10px] font-mono text-slate-400 text-center">
+            <div className="p-1 rounded bg-slate-900 border border-slate-800/80">
+              <span>Goal: </span><strong className="text-slate-200">+{sessionValue.goalCompletion.toFixed(2)}</strong>
             </div>
-          );
-        })}
+            <div className="p-1 rounded bg-slate-900 border border-slate-800/80">
+              <span>Discovery: </span><strong className="text-slate-200">+{sessionValue.discoveryValue.toFixed(2)}</strong>
+            </div>
+            <div className="p-1 rounded bg-slate-900 border border-slate-800/80">
+              <span>Friction: </span><strong className={sessionValue.unresolvedFrictionPenalty > 0 ? "text-rose-400" : "text-emerald-400"}>-{sessionValue.unresolvedFrictionPenalty.toFixed(2)}</strong>
+            </div>
+          </div>
+        </div>
+
+        {events.length === 0 ? (
+          <div className="text-center py-12 text-slate-400 text-xs font-mono">
+            No session events recorded yet. Click options in the viewport to simulate live telemetry.
+          </div>
+        ) : (
+          <div className="space-y-2.5 max-h-[360px] overflow-y-auto pr-1">
+            {events.map((ev, idx) => (
+              <div
+                key={ev.id || idx}
+                className="p-2.5 rounded-xl bg-slate-950/50 border border-slate-800/80 flex items-center justify-between text-xs font-mono"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 rounded-lg bg-slate-900 border border-slate-800">
+                    {getEventIcon(ev.eventType)}
+                  </div>
+                  <div>
+                    <div className="font-semibold text-slate-200">{ev.eventType}</div>
+                    <div className="text-[10px] text-slate-400 truncate max-w-[180px]">
+                      {ev.entityName || ev.entityId || "Navigation event"}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  {new Date(ev.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Decision Summary Milestone Banner */}
-      {latestTrace && latestTrace.governorDecision === "HELP" && (
-        <div className="mt-3 p-2.5 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
-          <Zap className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span><strong>Intervention Triggered:</strong> {latestTrace.candidateAction} presented to user.</span>
-        </div>
-      )}
-
-      {latestTrace && latestTrace.governorDecision === "DO_NOTHING" && (
-        <div className="mt-3 p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 text-slate-400 text-xs flex items-center gap-2">
-          <CheckCircle className="w-4 h-4 text-slate-400 shrink-0" />
-          <span><strong>Governor Restraint:</strong> Deliberately remaining silent (no unsolicited interruption).</span>
-        </div>
-      )}
+      <div className="mt-4 pt-3 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+        <span>Channel: Saarthi Client SDK</span>
+        <span>Transport: HTTPS / JSON</span>
+      </div>
     </div>
   );
 }
