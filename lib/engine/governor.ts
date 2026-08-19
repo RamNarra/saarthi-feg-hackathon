@@ -3,12 +3,9 @@ import { DecisionTrace, GovernorDecision, InterventionAction } from "../types/mo
 import { computeSessionFeatures } from "./feature-engine";
 import { predictSessionIntent } from "./intent-model";
 import { predictSessionFriction } from "./friction-model";
-import { evaluatePolicyGuard } from "./policy-guard";
+import { evaluatePolicyGuard, DecisionContext } from "./policy-guard";
 
-export interface GovernorConfig {
-  helpThreshold?: number;
-  overridePolicyBlock?: boolean;
-}
+export interface GovernorConfig extends DecisionContext {}
 
 export function runInterventionGovernor(
   events: SessionEvent[],
@@ -21,8 +18,6 @@ export function runInterventionGovernor(
 
   // 1. Ingestion / Schema Parsing Timing
   const tEventStart = performance.now();
-  const eventCount = events.length;
-  // Event validation / sanity check
   const eventProcessingLatencyMs = Number((performance.now() - tEventStart).toFixed(3));
 
   // 2. Feature Engine
@@ -36,14 +31,14 @@ export function runInterventionGovernor(
   const frictionResult = predictSessionFriction(features);
   const modelInferenceLatencyMs = Number((performance.now() - tModelStart).toFixed(3));
 
-  // 4. Policy & Safety Guard
+  // 4. Policy & Safety Guard with Authoritative DecisionContext
   const tGovStart = performance.now();
   const policyResult = evaluatePolicyGuard(
     intentResult.intent,
     frictionResult.friction,
     frictionResult.confidence,
     features,
-    config?.overridePolicyBlock
+    config
   );
 
   let governorDecision: GovernorDecision = "DO_NOTHING";

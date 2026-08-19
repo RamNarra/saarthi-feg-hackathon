@@ -15,11 +15,11 @@
   },
   {
     "route": "/session",
-    "firstLoadUncompressedJsBytes": 629089,
+    "firstLoadUncompressedJsBytes": 629400,
     "firstLoadChunkPaths": [
       ".next/static/chunks/0f3_9o624adnv.js",
       ".next/static/chunks/17c13b9k-l3c6.js",
-      ".next/static/chunks/15uvzld9m38wx.js",
+      ".next/static/chunks/3wb1vmswe11cx.js",
       ".next/static/chunks/3d7bu4mokvtzb.js",
       ".next/static/chunks/24wyyl461kjas.js",
       ".next/static/chunks/3h41av5yw3eie.js",

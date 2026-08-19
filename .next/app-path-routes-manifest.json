@@ -5,6 +5,7 @@
   "/analytics/page": "/analytics",
   "/api/v1/health/route": "/api/v1/health",
   "/api/v1/interventions/outcome/route": "/api/v1/interventions/outcome",
+  "/api/v1/session/[id]/state/route": "/api/v1/session/[id]/state",
   "/api/v1/session/events/route": "/api/v1/session/events",
   "/architecture/page": "/architecture",
   "/models/page": "/models",

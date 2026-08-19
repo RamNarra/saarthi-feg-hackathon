@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SessionEventSchema } from "@/lib/types/events";
+import { SessionEvent, SessionEventSchema } from "@/lib/types/events";
 import { runInterventionGovernor } from "@/lib/engine/governor";
 import { defaultSessionStore } from "@/lib/store/session-store";
 import { z } from "zod";
@@ -16,9 +16,6 @@ const IngestionPayloadSchema = z.object({
     metadata: z.record(z.string(), z.unknown()).optional(),
   }),
   history: z.array(SessionEventSchema).optional(),
-  config: z.object({
-    overridePolicyBlock: z.boolean().optional(),
-  }).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -34,9 +31,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { sessionId, userId, event, history, config } = parsed.data;
+    const { sessionId, userId, event, history } = parsed.data;
 
-    const incomingEvent = {
+    const incomingEvent: SessionEvent = {
       id: `ev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       sessionId,
       userId,
@@ -48,17 +45,30 @@ export async function POST(req: NextRequest) {
       metadata: event.metadata || {},
     };
 
-    // Use SessionStore or client stateless history if supplied
-    let activeEvents: any[];
+    // Option C (Hybrid Authoritative Architecture):
+    // 1. If client sends stateless history, seed any missing historical events into session store
     if (history && history.length > 0) {
-      activeEvents = [...history, incomingEvent];
-    } else {
-      const state = await defaultSessionStore.appendEvent(sessionId, userId, incomingEvent);
-      activeEvents = state.events;
+      const existing = await defaultSessionStore.getEvents(sessionId);
+      if (existing.length === 0) {
+        for (const h of history) {
+          await defaultSessionStore.appendEvent(sessionId, userId, h);
+        }
+      }
     }
 
-    // Run Saarthi Decision Engine
-    const decisionTrace = runInterventionGovernor(activeEvents, config);
+    // 2. Authoritative persistence in SessionStore
+    const stateRecord = await defaultSessionStore.appendEvent(sessionId, userId, incomingEvent);
+    const activeEvents = stateRecord.events;
+
+    // 3. Inject authoritative SessionStore context into Governor
+    const decisionContext = {
+      cooldownActive: stateRecord.cooldownActive,
+      dismissalCount: stateRecord.dismissalCount,
+      remainingInterventionBudget: stateRecord.remainingInterventionBudget,
+    };
+
+    // 4. Run Saarthi Decision Engine
+    const decisionTrace = runInterventionGovernor(activeEvents, decisionContext);
     const apiLatencyMs = Number((performance.now() - t0).toFixed(3));
 
     return NextResponse.json({
@@ -84,6 +94,8 @@ export async function POST(req: NextRequest) {
       policy: {
         status: decisionTrace.policyStatus, // ALLOWED | BLOCKED | SUPPRESSED
         reason: decisionTrace.policyReason,
+        cooldownActive: stateRecord.cooldownActive,
+        remainingBudget: stateRecord.remainingInterventionBudget,
       },
       telemetry: {
         engineLatencyMs: decisionTrace.metrics.totalDecisionLatencyMs,
@@ -109,7 +121,11 @@ export async function GET(req: NextRequest) {
 
   const sessionState = await defaultSessionStore.getSessionState(sessionId);
   const events = sessionState?.events || [];
-  const latestTrace = events.length > 0 ? runInterventionGovernor(events) : null;
+  const latestTrace = events.length > 0 ? runInterventionGovernor(events, {
+    cooldownActive: sessionState?.cooldownActive,
+    dismissalCount: sessionState?.dismissalCount,
+    remainingInterventionBudget: sessionState?.remainingInterventionBudget,
+  }) : null;
 
   return NextResponse.json({
     sessionId,

@@ -67,7 +67,7 @@ describe("Saarthi Real-Time Decision Engine", () => {
       { sessionId: "s4", userId: "u1", timestamp: "2026-08-19T08:00:20Z", eventType: "EVENT_VIEW", entityId: "liverpool" },
     ];
 
-    const trace = runInterventionGovernor(events, { overridePolicyBlock: true });
+    const trace = runInterventionGovernor(events, { internalTestOverride: true });
     expect(trace.governorDecision).toBe("DO_NOTHING");
     expect(trace.policyStatus).toBe("BLOCKED");
     expect(trace.outcome).toBe("BLOCKED_BY_POLICY");

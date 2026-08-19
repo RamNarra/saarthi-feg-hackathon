@@ -5,6 +5,7 @@
   "/analytics/page": "app/analytics/page.js",
   "/api/v1/health/route": "app/api/v1/health/route.js",
   "/api/v1/interventions/outcome/route": "app/api/v1/interventions/outcome/route.js",
+  "/api/v1/session/[id]/state/route": "app/api/v1/session/[id]/state/route.js",
   "/api/v1/session/events/route": "app/api/v1/session/events/route.js",
   "/architecture/page": "app/architecture/page.js",
   "/models/page": "app/models/page.js",

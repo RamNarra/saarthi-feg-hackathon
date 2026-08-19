@@ -21,7 +21,16 @@
     "afterFiles": [],
     "fallback": []
   },
-  "dynamicRoutes": [],
+  "dynamicRoutes": [
+    {
+      "page": "/api/v1/session/[id]/state",
+      "regex": "^/api/v1/session/([^/]+?)/state(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/api/v1/session/(?<nxtPid>[^/]+?)/state(?:/)?$"
+    }
+  ],
   "staticRoutes": [
     {
       "page": "/",

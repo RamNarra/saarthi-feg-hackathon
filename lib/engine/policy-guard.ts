@@ -1,5 +1,12 @@
 import { FrictionType, SessionIntent, SessionFeatures } from "../types/models";
 
+export interface DecisionContext {
+  cooldownActive?: boolean;
+  dismissalCount?: number;
+  remainingInterventionBudget?: number;
+  internalTestOverride?: boolean;
+}
+
 export interface PolicyCheckResult {
   allowed: boolean;
   status: "ALLOWED" | "BLOCKED" | "SUPPRESSED";
@@ -11,10 +18,10 @@ export function evaluatePolicyGuard(
   friction: FrictionType,
   confidence: number,
   features: SessionFeatures,
-  overridePolicyBlock?: boolean
+  context?: DecisionContext
 ): PolicyCheckResult {
-  // Scenario D explicit override for demo purposes
-  if (overridePolicyBlock) {
+  // Scenario D explicit override for internal demo test harness only
+  if (context?.internalTestOverride) {
     return {
       allowed: false,
       status: "BLOCKED",
@@ -22,16 +29,25 @@ export function evaluatePolicyGuard(
     };
   }
 
-  // 1. User Agency: Prior dismissal fatigue rule
-  if (features.priorInterventionDismissals >= 2) {
+  // 1. SessionStore Cooldown & Fatigue State (Authoritative Server State)
+  if (context?.cooldownActive || (context?.dismissalCount && context.dismissalCount >= 1) || features.priorInterventionDismissals >= 1) {
     return {
       allowed: false,
       status: "SUPPRESSED",
-      reason: "Fatigue policy: User dismissed recent interventions. Suppressing to prevent intrusion.",
+      reason: `Fatigue policy: User dismissed previous intervention (${context?.dismissalCount || features.priorInterventionDismissals} dismissal(s)). Cooldown active to prevent intrusion.`,
     };
   }
 
-  // 2. Early session protection (insufficient context)
+  // 2. Intervention Budget Exhaustion
+  if (context?.remainingInterventionBudget !== undefined && context.remainingInterventionBudget <= 0) {
+    return {
+      allowed: false,
+      status: "SUPPRESSED",
+      reason: "Intervention budget exhausted: Max in-session assistance allowance reached.",
+    };
+  }
+
+  // 3. Early session exploration protection (insufficient context)
   if (features.sessionDepth < 3 && friction !== "DECISION_HESITATION") {
     return {
       allowed: false,
@@ -40,7 +56,7 @@ export function evaluatePolicyGuard(
     };
   }
 
-  // 3. Confidence threshold
+  // 4. Confidence threshold guard
   if (confidence < 0.60 && friction !== "NONE") {
     return {
       allowed: false,
@@ -49,7 +65,7 @@ export function evaluatePolicyGuard(
     };
   }
 
-  // 4. Responsible AI: No dark patterns or urgency
+  // 5. Normal Responsible AI clearance
   return {
     allowed: true,
     status: "ALLOWED",

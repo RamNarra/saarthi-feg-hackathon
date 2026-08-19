@@ -26,11 +26,13 @@ export interface SaarthiDecisionResponse {
     action: GovernorDecision;
     candidateAction?: InterventionAction;
     expectedHelpValue: number;
-    payload?: any;
+    payload?: DecisionTrace["actionPayload"];
   };
   policy: {
     status: "ALLOWED" | "BLOCKED" | "SUPPRESSED";
     reason: string;
+    cooldownActive?: boolean;
+    remainingBudget?: number;
   };
   telemetry: {
     engineLatencyMs: number;
@@ -49,6 +51,23 @@ export interface SaarthiOutcomeResponse {
     dismissalCount: number;
   };
   timestamp: string;
+}
+
+export interface SaarthiSessionStateResponse {
+  sessionId: string;
+  userId: string;
+  eventCount: number;
+  cooldownActive: boolean;
+  dismissalCount: number;
+  acceptanceCount: number;
+  remainingInterventionBudget: number;
+  lastOutcomeTimestamp: string | null;
+  latestDecision: {
+    action: GovernorDecision;
+    intent: string;
+    friction: string;
+    policyStatus: string;
+  } | null;
 }
 
 export class SaarthiClient {
@@ -71,10 +90,12 @@ export class SaarthiClient {
     entityName?: string,
     metadata?: Record<string, unknown>
   ): Promise<SaarthiDecisionResponse> {
-    const event = {
+    const event: SessionEvent = {
       eventType,
       entityId,
       entityName,
+      sessionId: this.sessionId,
+      userId: this.userId,
       timestamp: new Date().toISOString(),
       metadata: metadata || {},
     };
@@ -105,7 +126,6 @@ export class SaarthiClient {
 
     const data: SaarthiDecisionResponse = await res.json();
 
-    // Cache to client history for stateless robustness
     this.localHistory.push({
       id: data.eventId,
       sessionId: this.sessionId,
@@ -147,6 +167,25 @@ export class SaarthiClient {
     }
 
     const data: SaarthiOutcomeResponse = await res.json();
+    return data;
+  }
+
+  async getSessionState(): Promise<SaarthiSessionStateResponse> {
+    const headers: Record<string, string> = {};
+    if (this.apiKey) {
+      headers["Authorization"] = `Bearer ${this.apiKey}`;
+    }
+
+    const res = await fetch(`${this.endpoint}/api/v1/session/${this.sessionId}/state`, {
+      method: "GET",
+      headers,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Saarthi getSessionState API error: ${res.status}`);
+    }
+
+    const data: SaarthiSessionStateResponse = await res.json();
     return data;
   }
 }
