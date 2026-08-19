@@ -54,6 +54,24 @@
       "namedRegex": "^/analytics(?:/)?$"
     },
     {
+      "page": "/api/v1/health",
+      "regex": "^/api/v1/health(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/v1/health(?:/)?$"
+    },
+    {
+      "page": "/api/v1/interventions/outcome",
+      "regex": "^/api/v1/interventions/outcome(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/v1/interventions/outcome(?:/)?$"
+    },
+    {
+      "page": "/api/v1/session/events",
+      "regex": "^/api/v1/session/events(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/v1/session/events(?:/)?$"
+    },
+    {
       "page": "/architecture",
       "regex": "^/architecture(?:/)?$",
       "routeKeys": {},
