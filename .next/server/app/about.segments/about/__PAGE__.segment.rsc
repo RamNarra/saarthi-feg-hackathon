@@ -1,16 +1,16 @@
 1:"$Sreact.fragment"
-2:I[67185,["/_next/static/chunks/0f3_9o624adnv.js"],"ClientPageRoot"]
-3:I[60078,["/_next/static/chunks/0f3_9o624adnv.js","/_next/static/chunks/09lkxy_69tmmk.js"],"default"]
-6:I[6566,["/_next/static/chunks/0f3_9o624adnv.js"],"OutletBoundary"]
+2:I[67185,["/_next/static/chunks/2oufqjv9-md09.js"],"ClientPageRoot"]
+3:I[60078,["/_next/static/chunks/2oufqjv9-md09.js","/_next/static/chunks/09lkxy_69tmmk.js"],"default"]
+6:I[6566,["/_next/static/chunks/2oufqjv9-md09.js"],"OutletBoundary"]
 7:"$Sreact.suspense"
-b:I[6566,["/_next/static/chunks/0f3_9o624adnv.js"],"ViewportBoundary"]
-c:I[6566,["/_next/static/chunks/0f3_9o624adnv.js"],"MetadataBoundary"]
-e:I[7446,["/_next/static/chunks/0f3_9o624adnv.js"],"default"]
-f:I[49709,["/_next/static/chunks/0f3_9o624adnv.js"],"default"]
+b:I[6566,["/_next/static/chunks/2oufqjv9-md09.js"],"ViewportBoundary"]
+c:I[6566,["/_next/static/chunks/2oufqjv9-md09.js"],"MetadataBoundary"]
+e:I[7446,["/_next/static/chunks/2oufqjv9-md09.js"],"default"]
+f:I[49709,["/_next/static/chunks/2oufqjv9-md09.js"],"default"]
 a:X
 11:X
 11:C
-0:{"buildId":"vqRx1-Pc68_AodGSRLpJs","data":[{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"Component":"$3","serverProvidedParams":{"searchParams":{},"params":{},"promises":["$@4","$@5"]}}],[["$","script","script-0",{"src":"/_next/static/chunks/09lkxy_69tmmk.js","async":true}]],["$","$L6",null,{"children":["$","$7",null,{"name":"Next.MetadataOutlet","children":"$@8"}]}]]}],"isPartial":"$@9","staleTime":"$a","varyParams":null},{"rsc":["$","$1","h",{"children":[null,["$","$Lb",null,{"children":[["$","meta","0",{"charSet":"utf-8"}],["$","meta","1",{"name":"viewport","content":"width=device-width, initial-scale=1"}]]}],["$","div",null,{"hidden":true,"children":["$","$Lc",null,{"children":["$","$7",null,{"name":"Next.Metadata","children":[["$","title","0",{"children":"Saarthi — Real-Time Session Intelligence & Friction Resolution"}],["$","meta","1",{"name":"description","content":"Understand in-session intent, detect behavioral friction, and intervene with minimal useful actions or deliberately do nothing."}]]}]}]}],null]}],"isPartial":"$@d","staleTime":"$a","varyParams":null},{"rsc":["$","$1","c",{"children":[null,["$","$Le",null,{"parallelRouterKey":"children","template":["$","$Lf",null,{}]}]]}],"isPartial":"$@10","staleTime":"$a","varyParams":"$11"}],"isUpgradeableISRFallback":false,"a":"$@12","rootVaryParams":null,"needsRuntimeRequest":"$@13"}
+0:{"buildId":"nFuhAbNwARgHoIkxMrgRQ","data":[{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"Component":"$3","serverProvidedParams":{"searchParams":{},"params":{},"promises":["$@4","$@5"]}}],[["$","script","script-0",{"src":"/_next/static/chunks/09lkxy_69tmmk.js","async":true}]],["$","$L6",null,{"children":["$","$7",null,{"name":"Next.MetadataOutlet","children":"$@8"}]}]]}],"isPartial":"$@9","staleTime":"$a","varyParams":null},{"rsc":["$","$1","h",{"children":[null,["$","$Lb",null,{"children":[["$","meta","0",{"charSet":"utf-8"}],["$","meta","1",{"name":"viewport","content":"width=device-width, initial-scale=1"}]]}],["$","div",null,{"hidden":true,"children":["$","$Lc",null,{"children":["$","$7",null,{"name":"Next.Metadata","children":[["$","title","0",{"children":"Saarthi — Real-Time Session Intelligence & Friction Resolution"}],["$","meta","1",{"name":"description","content":"Understand in-session intent, detect behavioral friction, and intervene with minimal useful actions or deliberately do nothing."}]]}]}]}],null]}],"isPartial":"$@d","staleTime":"$a","varyParams":null},{"rsc":["$","$1","c",{"children":[null,["$","$Le",null,{"parallelRouterKey":"children","template":["$","$Lf",null,{}]}]]}],"isPartial":"$@10","staleTime":"$a","varyParams":"$11"}],"isUpgradeableISRFallback":false,"a":"$@12","rootVaryParams":null,"needsRuntimeRequest":"$@13"}
 4:{}
 5:"$0:data:0:rsc:props:children:0:props:serverProvidedParams:params"
 8:null

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { SessionEvent } from "@/lib/types/events";
 import { DecisionTrace } from "@/lib/types/models";
-import { runInterventionGovernor } from "@/lib/engine/governor";
+import { createSaarthiClient, SaarthiDecisionResponse } from "@/lib/sdk/saarthi-client";
 import { DecisionTracePanel } from "../components/decision-trace";
 import { SessionReplayTimeline } from "../components/session-replay";
 import { InterventionModal } from "../components/intervention-modal";
@@ -15,11 +15,57 @@ export default function SessionSimulatorPage() {
   const [activeScenario, setActiveScenario] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [showIntervention, setShowIntervention] = useState<boolean>(false);
-  const [internalTestOverride, setInternalTestOverride] = useState<boolean>(false);
   const [userDismissalCount, setUserDismissalCount] = useState<number>(0);
   const [sessionCompleted, setSessionCompleted] = useState<boolean>(false);
+  const [sessionId, setSessionId] = useState<string>(() => `sess_sim_${Date.now()}`);
 
-  const triggerEvent = (
+  const [saarthiClient] = useState(() =>
+    createSaarthiClient({
+      sessionId,
+      userId: "usr_host_client_01",
+    })
+  );
+
+  const mapApiResponseToTrace = (data: SaarthiDecisionResponse, eventList: SessionEvent[]): DecisionTrace => {
+    return {
+      id: `trace_${Date.now()}`,
+      sessionId: data.sessionId,
+      timestamp: data.telemetry.measuredAt,
+      intent: data.intent.label as any,
+      intentConfidence: data.intent.confidence,
+      friction: data.friction.label as any,
+      frictionConfidence: data.friction.confidence,
+      governorDecision: data.decision.action,
+      candidateAction: data.decision.candidateAction,
+      rankedCandidates: (data.decision as any).rankedCandidates || [],
+      selectedUtility: (data.decision as any).selectedUtility || data.decision.expectedHelpValue || 0,
+      intrusionCost: (data.decision as any).intrusionCost || 0.25,
+      netUtilityScore: (data.decision as any).netUtilityScore || 0,
+      policyStatus: data.policy.status,
+      policyReason: data.policy.reason,
+      reason: data.friction.signals?.[0] || "Evaluation completed via Saarthi API",
+      expectedHelpValue: data.decision.expectedHelpValue,
+      structuredState: (data as any).structuredState || {
+        journeyStage: "ACTIVE_COMPARISON",
+        activeEntities: [],
+        comparisonSet: [],
+        inferredGoal: "In-session exploration",
+        frictionHistory: [],
+        interventionHistory: [],
+      },
+      actionPayload: data.decision.payload,
+      metrics: {
+        eventProcessingLatencyMs: 0.05,
+        featureCalculationLatencyMs: 0.15,
+        modelInferenceLatencyMs: 0.1,
+        governorLatencyMs: 0.1,
+        totalDecisionLatencyMs: data.telemetry.engineLatencyMs,
+      },
+      outcome: data.decision.action === "HELP" ? "INTERVENTION_OFFERED" : "NO_INTERVENTION",
+    };
+  };
+
+  const triggerEvent = async (
     eventType: SessionEvent["eventType"],
     entityId?: string,
     entityName?: string,
@@ -27,8 +73,8 @@ export default function SessionSimulatorPage() {
   ) => {
     const newEvent: SessionEvent = {
       id: `ev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      sessionId: "sess_sim_01",
-      userId: "usr_active_01",
+      sessionId,
+      userId: "usr_host_client_01",
       timestamp: new Date().toISOString(),
       eventType,
       entityId,
@@ -39,37 +85,44 @@ export default function SessionSimulatorPage() {
     const nextEvents = [...events, newEvent];
     setEvents(nextEvents);
 
-    // Run decision engine
-    const trace = runInterventionGovernor(nextEvents, {
-      internalTestOverride,
-      dismissalCount: userDismissalCount,
-      cooldownActive: userDismissalCount >= 1,
-    });
-    setCurrentTrace(trace);
+    try {
+      // Dogfood Saarthi SDK -> POST /api/v1/session/events
+      const data = await saarthiClient.trackEvent(eventType, entityId, entityName, metadata);
+      const trace = mapApiResponseToTrace(data, nextEvents);
+      setCurrentTrace(trace);
 
-    if (trace.governorDecision === "HELP" && trace.policyStatus === "ALLOWED") {
-      setShowIntervention(true);
+      if (data.decision.action === "HELP" && data.policy.status === "ALLOWED") {
+        setShowIntervention(true);
+      }
+    } catch (err) {
+      console.error("Saarthi SDK call failed:", err);
     }
   };
 
   const resetSession = () => {
+    const nextId = `sess_sim_${Date.now()}`;
+    setSessionId(nextId);
     setEvents([]);
     setCurrentTrace(null);
     setActiveScenario(null);
     setIsPlaying(false);
     setShowIntervention(false);
-    setInternalTestOverride(false);
     setUserDismissalCount(0);
     setSessionCompleted(false);
   };
 
-  // Scenario Scripts
+  // Scenario Scripts using Saarthi Client SDK
   const runScriptedScenario = async (scenario: "A" | "B" | "C" | "D") => {
     resetSession();
     setIsPlaying(true);
     setActiveScenario(scenario);
 
     const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
+    const activeSessionId = `sess_sc_${scenario}_${Date.now()}`;
+    const client = createSaarthiClient({
+      sessionId: activeSessionId,
+      userId: "usr_script_demo",
+    });
 
     if (scenario === "A") {
       // Scenario A: Normal Browsing -> DO NOTHING
@@ -84,11 +137,11 @@ export default function SessionSimulatorPage() {
 
       let accEvents: SessionEvent[] = [];
       for (const step of scriptEvents) {
-        await delay(500);
+        await delay(450);
         const ev: SessionEvent = {
           id: `ev_scA_${Date.now()}`,
-          sessionId: "sess_scA",
-          userId: "usr_scA",
+          sessionId: activeSessionId,
+          userId: "usr_script_demo",
           timestamp: new Date().toISOString(),
           eventType: step.type,
           entityId: step.id,
@@ -96,8 +149,8 @@ export default function SessionSimulatorPage() {
         };
         accEvents = [...accEvents, ev];
         setEvents([...accEvents]);
-        const trace = runInterventionGovernor(accEvents);
-        setCurrentTrace(trace);
+        const data = await client.trackEvent(step.type, step.id, step.name);
+        setCurrentTrace(mapApiResponseToTrace(data, accEvents));
       }
     } else if (scenario === "B") {
       // Scenario B: Friction Resolution (Compare loop) -> HELP
@@ -117,11 +170,11 @@ export default function SessionSimulatorPage() {
 
       let accEvents: SessionEvent[] = [];
       for (const step of scriptEvents) {
-        await delay(450);
+        await delay(400);
         const ev: SessionEvent = {
           id: `ev_scB_${Date.now()}`,
-          sessionId: "sess_scB",
-          userId: "usr_scB",
+          sessionId: activeSessionId,
+          userId: "usr_script_demo",
           timestamp: new Date().toISOString(),
           eventType: step.type,
           entityId: step.id,
@@ -129,32 +182,27 @@ export default function SessionSimulatorPage() {
         };
         accEvents = [...accEvents, ev];
         setEvents([...accEvents]);
-        const trace = runInterventionGovernor(accEvents);
+        const data = await client.trackEvent(step.type, step.id, step.name);
+        const trace = mapApiResponseToTrace(data, accEvents);
         setCurrentTrace(trace);
-        if (trace.governorDecision === "HELP") {
+        if (data.decision.action === "HELP") {
           setShowIntervention(true);
         }
       }
     } else if (scenario === "C") {
-      // Scenario C: User Rejects Help -> Policy Fatigue Suppression
+      // Scenario C: User Rejects Help -> Policy Fatigue Suppression via /interventions/outcome API
       const scriptEvents: Array<{ type: SessionEvent["eventType"]; id?: string; name?: string }> = [
         { type: "SESSION_START" },
-        { type: "EVENT_VIEW", id: "arsenal", name: "Arsenal" },
-        { type: "INTERVENTION_DISMISSED" },
-        { type: "EVENT_VIEW", id: "liverpool", name: "Liverpool" },
-        { type: "INTERVENTION_DISMISSED" },
-        { type: "EVENT_VIEW", id: "arsenal", name: "Arsenal" },
-        { type: "EVENT_VIEW", id: "liverpool", name: "Liverpool" },
         { type: "EVENT_VIEW", id: "arsenal", name: "Arsenal" },
       ];
 
       let accEvents: SessionEvent[] = [];
       for (const step of scriptEvents) {
-        await delay(450);
+        await delay(400);
         const ev: SessionEvent = {
           id: `ev_scC_${Date.now()}`,
-          sessionId: "sess_scC",
-          userId: "usr_scC",
+          sessionId: activeSessionId,
+          userId: "usr_script_demo",
           timestamp: new Date().toISOString(),
           eventType: step.type,
           entityId: step.id,
@@ -162,27 +210,61 @@ export default function SessionSimulatorPage() {
         };
         accEvents = [...accEvents, ev];
         setEvents([...accEvents]);
-        const trace = runInterventionGovernor(accEvents, { dismissalCount: 2, cooldownActive: true });
-        setCurrentTrace(trace);
+        const data = await client.trackEvent(step.type, step.id, step.name);
+        setCurrentTrace(mapApiResponseToTrace(data, accEvents));
+      }
+
+      // Submit dismissals via outcome API to activate fatigue cooldown in SessionStore
+      await client.recordOutcome("DISMISSED", "Intervention dismissed by user");
+      await client.recordOutcome("DISMISSED", "Intervention dismissed by user");
+
+      const subsequentEvents: Array<{ type: SessionEvent["eventType"]; id?: string; name?: string }> = [
+        { type: "EVENT_VIEW", id: "liverpool", name: "Liverpool" },
+        { type: "BACK" },
+        { type: "EVENT_VIEW", id: "arsenal", name: "Arsenal" },
+        { type: "BACK" },
+        { type: "EVENT_VIEW", id: "liverpool", name: "Liverpool" },
+      ];
+
+      for (const step of subsequentEvents) {
+        await delay(400);
+        const ev: SessionEvent = {
+          id: `ev_scC_${Date.now()}`,
+          sessionId: activeSessionId,
+          userId: "usr_script_demo",
+          timestamp: new Date().toISOString(),
+          eventType: step.type,
+          entityId: step.id,
+          entityName: step.name,
+        };
+        accEvents = [...accEvents, ev];
+        setEvents([...accEvents]);
+        const data = await client.trackEvent(step.type, step.id, step.name);
+        setCurrentTrace(mapApiResponseToTrace(data, accEvents));
       }
     } else if (scenario === "D") {
-      // Scenario D: Policy Block (Responsible-Play Guard Active)
-      setInternalTestOverride(true);
+      // Scenario D: Dismissal Fatigue Guard Suppression
+      await client.recordOutcome("DISMISSED");
+      await client.recordOutcome("DISMISSED");
+
       const scriptEvents: Array<{ type: SessionEvent["eventType"]; id?: string; name?: string }> = [
         { type: "SESSION_START" },
         { type: "EVENT_VIEW", id: "arsenal", name: "Arsenal" },
+        { type: "BACK" },
         { type: "EVENT_VIEW", id: "liverpool", name: "Liverpool" },
+        { type: "BACK" },
         { type: "EVENT_VIEW", id: "arsenal", name: "Arsenal" },
+        { type: "BACK" },
         { type: "EVENT_VIEW", id: "liverpool", name: "Liverpool" },
       ];
 
       let accEvents: SessionEvent[] = [];
       for (const step of scriptEvents) {
-        await delay(450);
+        await delay(400);
         const ev: SessionEvent = {
           id: `ev_scD_${Date.now()}`,
-          sessionId: "sess_scD",
-          userId: "usr_scD",
+          sessionId: activeSessionId,
+          userId: "usr_script_demo",
           timestamp: new Date().toISOString(),
           eventType: step.type,
           entityId: step.id,
@@ -190,24 +272,26 @@ export default function SessionSimulatorPage() {
         };
         accEvents = [...accEvents, ev];
         setEvents([...accEvents]);
-        const trace = runInterventionGovernor(accEvents, { internalTestOverride: true });
-        setCurrentTrace(trace);
+        const data = await client.trackEvent(step.type, step.id, step.name);
+        setCurrentTrace(mapApiResponseToTrace(data, accEvents));
       }
     }
 
     setIsPlaying(false);
   };
 
-  const handleInterventionAccept = () => {
+  const handleInterventionAccept = async () => {
     setShowIntervention(false);
-    triggerEvent("INTERVENTION_ACCEPTED", "compare_widget", "Side-by-Side Comparison Accepted");
+    await saarthiClient.recordOutcome("ACCEPTED", "User accepted side-by-side comparison");
+    await triggerEvent("INTERVENTION_ACCEPTED", "compare_widget", "Side-by-Side Comparison Accepted");
     setSessionCompleted(true);
   };
 
-  const handleInterventionDismiss = () => {
+  const handleInterventionDismiss = async () => {
     setShowIntervention(false);
     setUserDismissalCount((prev) => prev + 1);
-    triggerEvent("INTERVENTION_DISMISSED", "compare_widget", "Intervention Dismissed by User");
+    await saarthiClient.recordOutcome("DISMISSED", "Intervention dismissed by user");
+    await triggerEvent("INTERVENTION_DISMISSED", "compare_widget", "Intervention Dismissed by User");
   };
 
   return (
@@ -218,11 +302,11 @@ export default function SessionSimulatorPage() {
           <div className="flex items-center gap-2">
             <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Live Session Simulator</h1>
             <span className="text-xs font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-              Interactive Testbed
+              Dogfooding Saarthi SDK &amp; REST API
             </span>
           </div>
           <p className="mt-1 text-sm text-slate-400">
-            Simulate live user events, inspect the decision governor, and observe real-time policy guardrails.
+            Simulate live user events streaming through the Saarthi Client SDK into the backend Decision API.
           </p>
         </div>
 
@@ -241,7 +325,7 @@ export default function SessionSimulatorPage() {
       <div className="p-4 rounded-2xl glass-panel border border-slate-800 mb-8">
         <div className="text-xs font-mono uppercase tracking-wider text-slate-400 mb-3 flex items-center justify-between">
           <span>Preset Demo Scenarios</span>
-          <span className="text-[11px] text-cyan-400">Click to run instant sequence</span>
+          <span className="text-[11px] text-cyan-400">Click to stream events via Saarthi SDK</span>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <button
@@ -258,7 +342,7 @@ export default function SessionSimulatorPage() {
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">DO NOTHING</span>
             </div>
             <div className="text-xs font-semibold text-white">Normal Browsing</div>
-            <div className="text-[11px] text-slate-400 mt-1">Fluent navigation without friction. Demonstrates restraint.</div>
+            <div className="text-[11px] text-slate-400 mt-1">Fluent navigation without friction. Restraint applied.</div>
           </button>
 
           <button
@@ -275,7 +359,7 @@ export default function SessionSimulatorPage() {
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 font-mono font-bold">HELP</span>
             </div>
             <div className="text-xs font-semibold text-white">Friction Resolution</div>
-            <div className="text-[11px] text-slate-400 mt-1">Repeated alternation (A⇄B) triggers side-by-side comparison.</div>
+            <div className="text-[11px] text-slate-400 mt-1">Alternation (A⇄B) ranks COMPARE as #1 utility action.</div>
           </button>
 
           <button
@@ -292,7 +376,7 @@ export default function SessionSimulatorPage() {
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 font-mono">SUPPRESSED</span>
             </div>
             <div className="text-xs font-semibold text-white">User Dismissal Fatigue</div>
-            <div className="text-[11px] text-slate-400 mt-1">Repeated dismissal suppresses future interruptions.</div>
+            <div className="text-[11px] text-slate-400 mt-1">Outcome API registers dismissal and activates cooldown.</div>
           </button>
 
           <button
@@ -306,10 +390,10 @@ export default function SessionSimulatorPage() {
           >
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs font-bold font-mono text-rose-400">Scenario D</span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 font-mono font-bold">BLOCKED</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 font-mono font-bold">SUPPRESSED</span>
             </div>
-            <div className="text-xs font-semibold text-white">Policy / Agency Guard</div>
-            <div className="text-[11px] text-slate-400 mt-1">Responsible-play guard explicitly blocks candidate action.</div>
+            <div className="text-xs font-semibold text-white">Policy / Fatigue Guard</div>
+            <div className="text-[11px] text-slate-400 mt-1">Fatigue cooldown actively suppresses candidate interruption.</div>
           </button>
         </div>
       </div>
@@ -447,7 +531,7 @@ export default function SessionSimulatorPage() {
           <SessionReplayTimeline events={events} latestTrace={currentTrace} />
         </div>
 
-        {/* Right Column: Live Decision Trace (4 cols) */}
+        {/* Right Column: Live Decision Trace with Utility Ranking (4 cols) */}
         <div className="lg:col-span-4">
           <DecisionTracePanel trace={currentTrace} isRunning={isPlaying} />
         </div>
