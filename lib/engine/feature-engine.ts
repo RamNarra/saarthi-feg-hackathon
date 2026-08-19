@@ -1,5 +1,11 @@
 import { SessionEvent } from "../types/events";
-import { SessionFeatures, StructuredSessionState, FrictionType, InterventionAction } from "../types/models";
+import {
+  SessionFeatures,
+  StructuredSessionState,
+  JourneyStage,
+  FinalStepContext,
+  InterventionAction,
+} from "../types/models";
 
 export function computeSessionFeatures(events: SessionEvent[]): SessionFeatures {
   const startTime = events.length > 0 ? new Date(events[0].timestamp).getTime() : Date.now();
@@ -16,6 +22,14 @@ export function computeSessionFeatures(events: SessionEvent[]): SessionFeatures 
   let priorInterventionAcceptances = 0;
   let scrollCount = 0;
   let totalScroll = 0;
+  let goalCompleted = false;
+
+  // Final step tracking
+  let slipOpenTime: number | null = null;
+  let inConfirmation = false;
+  let unacknowledgedChange = false;
+  let finalStepBacktracks = 0;
+  let confirmationViews = 0;
 
   const entitySequence: string[] = [];
   const entityNameMap = new Map<string, string>();
@@ -47,6 +61,10 @@ export function computeSessionFeatures(events: SessionEvent[]): SessionFeatures 
       }
     } else if (ev.eventType === "BACK") {
       backtracks++;
+      if (inConfirmation) {
+        finalStepBacktracks++;
+        inConfirmation = false;
+      }
     } else if (ev.eventType === "COMPARE") {
       comparisonCount++;
       lastMeaningfulActionTime = evTime;
@@ -74,6 +92,18 @@ export function computeSessionFeatures(events: SessionEvent[]): SessionFeatures 
         outcome: "ACCEPTED",
         timestamp: ev.timestamp,
       });
+    } else if (ev.eventType === "GOAL_COMPLETED") {
+      goalCompleted = true;
+    }
+
+    // Explicit final step signal detection
+    if (ev.eventType === "MARKET_VIEW" && (ev.metadata?.isSlipReview || ev.entityId?.includes("slip") || ev.entityId?.includes("confirm"))) {
+      inConfirmation = true;
+      confirmationViews++;
+      if (!slipOpenTime) slipOpenTime = evTime;
+    }
+    if (ev.metadata?.oddsChanged || ev.metadata?.marketChanged) {
+      unacknowledgedChange = true;
     }
 
     if (ev.metadata?.sport) {
@@ -93,7 +123,7 @@ export function computeSessionFeatures(events: SessionEvent[]): SessionFeatures 
     }
   }
 
-  // Alternation score detection: e.g. A -> B -> A -> B or repeated switching between 2 distinct entities
+  // Alternation score detection: e.g. A -> B -> A -> B
   let alternationScore = 0;
   if (entitySequence.length >= 3) {
     const seq = entitySequence.slice(-6);
@@ -115,11 +145,32 @@ export function computeSessionFeatures(events: SessionEvent[]): SessionFeatures 
   if (dwellTimeSeconds > 20 && sessionDepth >= 5) hesitationScore += 0.3;
   hesitationScore = Math.min(1.0, hesitationScore);
 
+  // Final-step drop-off hesitation score
+  let finalStepHesitationScore = 0;
+  const timeInConfirmationSec = slipOpenTime ? Math.max(0, Math.round((lastTime - slipOpenTime) / 1000)) : 0;
+  const hesitationSignals: string[] = [];
+
+  if (inConfirmation || confirmationViews > 0) {
+    if (timeInConfirmationSec > 15) {
+      finalStepHesitationScore += 0.50;
+      hesitationSignals.push("Extended dwell at confirmation screen (>15s)");
+    }
+    if (unacknowledgedChange) {
+      finalStepHesitationScore += 0.40;
+      hesitationSignals.push("Unacknowledged market or odds adjustment detected");
+    }
+    if (finalStepBacktracks > 0) {
+      finalStepHesitationScore += 0.45;
+      hesitationSignals.push("Backtrack from confirmation back to browsing");
+    }
+  }
+  finalStepHesitationScore = Math.min(1.0, finalStepHesitationScore);
+
   const contentDiversityRatio = sessionDepth > 0 ? Number((uniqueEntitiesCount / Math.max(1, eventOpens)).toFixed(2)) : 1.0;
   const timeSinceMeaningfulActionSec = Math.max(0, Math.round((lastTime - lastMeaningfulActionTime) / 1000));
   const scrollDepthAvg = scrollCount > 0 ? Math.round(totalScroll / scrollCount) : 0;
 
-  // Derive Structured Session State
+  // Active Entities Map
   const activeEntities = uniqueEntities.map((id) => ({
     id,
     name: entityNameMap.get(id) || id,
@@ -135,31 +186,43 @@ export function computeSessionFeatures(events: SessionEvent[]): SessionFeatures 
     }
   }
 
-  // Infer Journey Stage
-  let journeyStage: StructuredSessionState["journeyStage"] = "EARLY_EXPLORATION";
-  if (interventionHistory.length > 0) {
-    journeyStage = "POST_INTERVENTION";
-  } else if (comparisonSet.length === 2) {
-    journeyStage = "ACTIVE_COMPARISON";
+  // 7-Stage Journey Progression Engine
+  let journeyStage: JourneyStage = "DISCOVERY";
+  if (goalCompleted) {
+    journeyStage = "POST_ACTION";
+  } else if (inConfirmation || confirmationViews > 0) {
+    journeyStage = "CONFIRMATION";
+  } else if (comparisonSet.length === 2 && alternationScore >= 0.35) {
+    journeyStage = "COMPARISON";
   } else if (marketSwitchingCount >= 2 || repeatedEntityViews >= 1) {
-    journeyStage = "EVALUATION";
-  } else if (sessionDepth >= 8) {
     journeyStage = "CONVERGENCE";
+  } else if (eventOpens >= 2 || scrollCount >= 2) {
+    journeyStage = "EVALUATION";
   }
 
   // Infer Session Goal
   let inferredGoal = "Exploring premier matchups and live markets";
-  if (comparisonSet.length === 2) {
+  if (inConfirmation) {
+    inferredGoal = `Reviewing final selection confirmation for ${activeEntityName || "Selected Match"}`;
+  } else if (comparisonSet.length === 2) {
     inferredGoal = `Comparing head-to-head metrics for ${comparisonSet[0].name} vs ${comparisonSet[1].name}`;
   } else if (activeEntityName && marketSwitchingCount >= 2) {
     inferredGoal = `Evaluating market options for ${activeEntityName}`;
   }
+
+  const finalStepContext: FinalStepContext = {
+    stepName: inConfirmation ? (unacknowledgedChange ? "ODDS_CHANGED" : "CONFIRMATION_PENDING") : "NONE",
+    timeInConfirmationSec,
+    unacknowledgedChange,
+    hesitationSignals,
+  };
 
   const structuredState: StructuredSessionState = {
     journeyStage,
     activeEntities,
     comparisonSet,
     inferredGoal,
+    finalStepContext,
     frictionHistory: [],
     interventionHistory,
   };
@@ -182,6 +245,7 @@ export function computeSessionFeatures(events: SessionEvent[]): SessionFeatures 
     priorInterventionAcceptances,
     alternationScore: Number(alternationScore.toFixed(2)),
     hesitationScore: Number(hesitationScore.toFixed(2)),
+    finalStepHesitationScore: Number(finalStepHesitationScore.toFixed(2)),
     lastEntities: entitySequence.slice(-4),
     activeEntity,
     activeEntityName,

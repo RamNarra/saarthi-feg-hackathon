@@ -8,6 +8,7 @@
   "/api/v1/session/[id]/state/route": "/api/v1/session/[id]/state",
   "/api/v1/session/events/route": "/api/v1/session/events",
   "/architecture/page": "/architecture",
+  "/impact/page": "/impact",
   "/models/page": "/models",
   "/page": "/",
   "/session/page": "/session"

@@ -87,6 +87,12 @@
       "namedRegex": "^/architecture(?:/)?$"
     },
     {
+      "page": "/impact",
+      "regex": "^/impact(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/impact(?:/)?$"
+    },
+    {
       "page": "/models",
       "regex": "^/models(?:/)?$",
       "routeKeys": {},

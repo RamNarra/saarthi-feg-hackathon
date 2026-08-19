@@ -1,7 +1,7 @@
 "use client";
 
 import { DecisionTrace } from "@/lib/types/models";
-import { Activity, ShieldCheck, Clock, CheckCircle2, AlertTriangle, XCircle, ArrowUpRight, Cpu, Layers, Sparkles, Scale } from "lucide-react";
+import { Activity, ShieldCheck, Clock, CheckCircle2, AlertTriangle, XCircle, ArrowUpRight, Cpu, Layers, Sparkles, Scale, DollarSign } from "lucide-react";
 
 interface DecisionTraceProps {
   trace: DecisionTrace | null;
@@ -15,7 +15,7 @@ export function DecisionTracePanel({ trace, isRunning }: DecisionTraceProps) {
         <Activity className="w-8 h-8 text-slate-400 mb-3 animate-pulse" />
         <h3 className="text-sm font-semibold text-slate-300">Live Decision Trace</h3>
         <p className="text-xs text-slate-400 max-w-xs mt-1">
-          Perform actions in the simulator or run a scenario to inspect real-time inference & policy evaluation.
+          Perform actions in the simulator or run a scenario to inspect real-time inference, Trust Gate &amp; Governor evaluation.
         </p>
       </div>
     );
@@ -62,12 +62,12 @@ export function DecisionTracePanel({ trace, isRunning }: DecisionTraceProps) {
           </div>
         </div>
 
-        {/* Structured State Context Badge */}
+        {/* 7-Stage Journey Context Badge */}
         {trace.structuredState && (
           <div className="mb-4 p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between text-[11px] font-mono">
             <div className="flex items-center gap-2 text-slate-400">
               <Layers className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Stage: <strong className="text-indigo-300">{trace.structuredState.journeyStage}</strong></span>
+              <span>Journey: <strong className="text-indigo-300">{trace.structuredState.journeyStage}</strong></span>
             </div>
             <span className="text-slate-400 truncate max-w-[170px] text-right">
               {trace.structuredState.inferredGoal}
@@ -79,7 +79,7 @@ export function DecisionTracePanel({ trace, isRunning }: DecisionTraceProps) {
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/90">
             <div className="text-[10px] uppercase font-mono tracking-wider text-slate-400">Current Intent</div>
-            <div className="text-cyan-400 font-bold text-base mt-0.5 tracking-tight">{trace.intent}</div>
+            <div className="text-cyan-400 font-bold text-base mt-0.5 tracking-tight truncate">{trace.intent}</div>
             <div className="mt-1 flex items-center justify-between text-[11px] font-mono text-slate-400">
               <span>Confidence</span>
               <span className="text-slate-200">{Math.round(trace.intentConfidence * 100)}%</span>
@@ -102,7 +102,7 @@ export function DecisionTracePanel({ trace, isRunning }: DecisionTraceProps) {
           </div>
         </div>
 
-        {/* Governor Evaluation Box & Utility Scoring */}
+        {/* Governor Evaluation Box & Value Scoring */}
         <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-700/80 mb-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-mono text-slate-400 uppercase tracking-wide">Governor Output:</span>
@@ -119,7 +119,7 @@ export function DecisionTracePanel({ trace, isRunning }: DecisionTraceProps) {
             <div className="mt-3 pt-2.5 border-t border-slate-800/80">
               <div className="flex items-center justify-between text-[11px] font-mono mb-2">
                 <span className="text-slate-400 flex items-center gap-1"><Scale className="w-3 h-3 text-cyan-400" /> Utility vs Cost:</span>
-                <span className="text-emerald-400 font-bold">Net: +{trace.netUtilityScore.toFixed(2)}</span>
+                <span className="text-emerald-400 font-bold">Value Uplift: +{trace.expectedSessionValue.toFixed(2)}</span>
               </div>
               <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
                 <div className="p-1.5 rounded bg-slate-900 border border-slate-800 flex justify-between">
@@ -135,10 +135,10 @@ export function DecisionTracePanel({ trace, isRunning }: DecisionTraceProps) {
           )}
         </div>
 
-        {/* Policy Check Details */}
+        {/* Trust & Eligibility Gate Details */}
         <div className="p-3 rounded-xl bg-slate-950/40 border border-slate-800/60 text-xs font-mono mb-4">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-slate-400">Responsible AI Policy:</span>
+            <span className="text-slate-400">Trust &amp; Eligibility Gate:</span>
             {getPolicyBadge(trace.policyStatus)}
           </div>
           <div className="text-[11px] text-slate-400 mt-1 leading-snug">

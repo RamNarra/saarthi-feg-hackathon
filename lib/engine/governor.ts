@@ -18,7 +18,7 @@ export interface GovernorConfig extends DecisionContext {}
 /**
  * Contextual Multi-factor Intervention Ranker:
  * Evaluates candidate actions using Intent Fit × Friction Fit × Context Fit × Confidence,
- * subtracting Intrusion Cost and Fatigue Penalty.
+ * subtracting Intrusion Cost and Fatigue Penalty to produce Expected Session Value (ESV).
  */
 function rankCandidateInterventions(
   intent: SessionIntent,
@@ -31,15 +31,26 @@ function rankCandidateInterventions(
   const candidates: CandidateInterventionScore[] = [];
   const compSet = features.structuredState.comparisonSet;
   const activeName = features.activeEntityName || "Selected Match";
+  const finalStep = features.structuredState.finalStepContext;
 
   // Intent fit matrices (0.0 to 1.0)
   const intentFitMap: Record<InterventionAction, Record<SessionIntent, number>> = {
+    CLARIFY_FINAL_STEP: {
+      CONFIRM_ACTION: 1.0,
+      READY_TO_ACT: 0.9,
+      COMPARE: 0.4,
+      RESEARCH: 0.3,
+      DISCOVER: 0.2,
+      FOLLOW: 0.2,
+      UNKNOWN: 0.3,
+    },
     COMPARE: {
       COMPARE: 1.0,
       RESEARCH: 0.7,
       DISCOVER: 0.4,
       FOLLOW: 0.3,
       READY_TO_ACT: 0.2,
+      CONFIRM_ACTION: 0.1,
       UNKNOWN: 0.3,
     },
     EXPLAIN: {
@@ -48,6 +59,7 @@ function rankCandidateInterventions(
       DISCOVER: 0.5,
       FOLLOW: 0.7,
       READY_TO_ACT: 0.4,
+      CONFIRM_ACTION: 0.3,
       UNKNOWN: 0.3,
     },
     NARROW: {
@@ -56,6 +68,7 @@ function rankCandidateInterventions(
       COMPARE: 0.4,
       FOLLOW: 0.3,
       READY_TO_ACT: 0.3,
+      CONFIRM_ACTION: 0.1,
       UNKNOWN: 0.4,
     },
     RESUME: {
@@ -64,6 +77,7 @@ function rankCandidateInterventions(
       DISCOVER: 0.5,
       COMPARE: 0.4,
       READY_TO_ACT: 0.6,
+      CONFIRM_ACTION: 0.2,
       UNKNOWN: 0.3,
     },
     ANSWER: {
@@ -72,11 +86,46 @@ function rankCandidateInterventions(
       DISCOVER: 0.6,
       FOLLOW: 0.6,
       READY_TO_ACT: 0.4,
+      CONFIRM_ACTION: 0.3,
       UNKNOWN: 0.4,
     },
   };
 
-  // 1. Candidate: COMPARE (Side-by-Side metrics)
+  // 1. Candidate: CLARIFY_FINAL_STEP (Final-step drop-off transparency)
+  let clarifyFrictionFit = 0.05;
+  if (friction === "FINAL_STEP_DROP_OFF" || features.finalStepHesitationScore >= 0.40) {
+    clarifyFrictionFit = 0.98;
+  } else if (features.structuredState.journeyStage === "CONFIRMATION") {
+    clarifyFrictionFit = 0.60;
+  }
+  const clarifyContextFit = features.structuredState.journeyStage === "CONFIRMATION" || finalStep.stepName !== "NONE" ? 1.0 : 0.3;
+  const clarifyIntentFit = intentFitMap.CLARIFY_FINAL_STEP[intent] || 0.5;
+  const clarifyUsefulness = clarifyFrictionFit * clarifyIntentFit * clarifyContextFit * (friction === "FINAL_STEP_DROP_OFF" ? 0.95 : frictionConfidence);
+  const clarifyIntrusion = 0.12; // ultra-low intrusion transparency banner
+  const clarifyNet = Math.max(0, clarifyUsefulness - clarifyIntrusion - fatiguePenalty);
+
+  candidates.push({
+    action: "CLARIFY_FINAL_STEP",
+    expectedUsefulness: Number(clarifyUsefulness.toFixed(3)),
+    intrusionCost: clarifyIntrusion,
+    netUtilityScore: Number(clarifyNet.toFixed(3)),
+    expectedSessionValue: Number((clarifyNet * 1.45).toFixed(3)),
+    justification: "Transparently summarize selections and market terms without pressure",
+    payload: {
+      title: "Selection Overview & Market Terms",
+      description: finalStep.unacknowledgedChange
+        ? "Note: Odds updated from 2.10 to 2.25 based on live match conditions. Confirm only if satisfied."
+        : "Here is the concise summary of your selected markets and rule terms before you proceed.",
+      actionType: "CLARIFY_FINAL_STEP",
+      detailsSummary: {
+        match: activeName,
+        stage: "Review & Confirmation",
+        guarantee: "Zero pressure — review at your own pace.",
+      },
+    },
+  });
+
+  // 2. Candidate: COMPARE (Side-by-Side metrics)
   let compareFrictionFit = 0.1;
   if (friction === "DECISION_HESITATION") compareFrictionFit = 0.95;
   else if (friction === "INFORMATION_OVERLOAD") compareFrictionFit = 0.5;
@@ -93,6 +142,7 @@ function rankCandidateInterventions(
     expectedUsefulness: Number(compareUsefulness.toFixed(3)),
     intrusionCost: compareIntrusion,
     netUtilityScore: Number(compareNet.toFixed(3)),
+    expectedSessionValue: Number((compareNet * 1.25).toFixed(3)),
     justification: "Side-by-side metrics comparison for competing matches",
     payload: {
       title: "Compare Options Side-by-Side",
@@ -113,7 +163,7 @@ function rankCandidateInterventions(
     },
   });
 
-  // 2. Candidate: NARROW (Focus Filters)
+  // 3. Candidate: NARROW (Focus Filters)
   let narrowFrictionFit = 0.1;
   if (friction === "INFORMATION_OVERLOAD") narrowFrictionFit = 0.95;
   else if (friction === "DISCOVERY") narrowFrictionFit = 0.8;
@@ -130,6 +180,7 @@ function rankCandidateInterventions(
     expectedUsefulness: Number(narrowUsefulness.toFixed(3)),
     intrusionCost: narrowIntrusion,
     netUtilityScore: Number(narrowNet.toFixed(3)),
+    expectedSessionValue: Number((narrowNet * 1.10).toFixed(3)),
     justification: "Filter active markets to primary options",
     payload: {
       title: "Focus on Primary Markets",
@@ -138,7 +189,7 @@ function rankCandidateInterventions(
     },
   });
 
-  // 3. Candidate: RESUME (Context Restoration)
+  // 4. Candidate: RESUME (Context Restoration)
   let resumeFrictionFit = 0.1;
   if (friction === "NAVIGATION") resumeFrictionFit = 0.95;
   else if (friction === "UNCERTAINTY") resumeFrictionFit = 0.75;
@@ -155,6 +206,7 @@ function rankCandidateInterventions(
     expectedUsefulness: Number(resumeUsefulness.toFixed(3)),
     intrusionCost: resumeIntrusion,
     netUtilityScore: Number(resumeNet.toFixed(3)),
+    expectedSessionValue: Number((resumeNet * 1.15).toFixed(3)),
     justification: "Restore recently viewed match state",
     payload: {
       title: `Resume ${activeName}`,
@@ -163,7 +215,7 @@ function rankCandidateInterventions(
     },
   });
 
-  // 4. Candidate: EXPLAIN (Grounded Context)
+  // 5. Candidate: EXPLAIN (Grounded Context)
   let explainFrictionFit = 0.1;
   if (friction === "UNCERTAINTY") explainFrictionFit = 0.9;
   else if (friction === "DECISION_HESITATION") explainFrictionFit = 0.7;
@@ -180,6 +232,7 @@ function rankCandidateInterventions(
     expectedUsefulness: Number(explainUsefulness.toFixed(3)),
     intrusionCost: explainIntrusion,
     netUtilityScore: Number(explainNet.toFixed(3)),
+    expectedSessionValue: Number((explainNet * 1.20).toFixed(3)),
     justification: "Surface grounded statistical summary",
     payload: {
       title: `Key Insights for ${activeName}`,
@@ -213,8 +266,23 @@ export function runInterventionGovernor(
 
   // 3. Model Scoring
   const tModelStart = performance.now();
-  const intentResult = predictSessionIntent(features);
-  const frictionResult = predictSessionFriction(features);
+  let intentResult = predictSessionIntent(features);
+  let frictionResult = predictSessionFriction(features);
+
+  // Override if in final step drop-off state
+  if (features.finalStepHesitationScore >= 0.40) {
+    frictionResult = {
+      ...frictionResult,
+      friction: "FINAL_STEP_DROP_OFF",
+      confidence: 0.94,
+    };
+    intentResult = {
+      ...intentResult,
+      intent: "CONFIRM_ACTION",
+      confidence: 0.95,
+    };
+  }
+
   const modelInferenceLatencyMs = Number((performance.now() - tModelStart).toFixed(3));
 
   // Populate friction history into structured state
@@ -239,9 +307,9 @@ export function runInterventionGovernor(
 
   const topCandidate = rankedCandidates[0];
 
-  // 5. Policy & Safety Guard Evaluation
+  // 5. Trust & Eligibility Gate Evaluation
   const tGovStart = performance.now();
-  const policyResult = evaluatePolicyGuard(
+  const trustGateResult = evaluatePolicyGuard(
     intentResult.intent,
     frictionResult.friction,
     frictionResult.confidence,
@@ -256,15 +324,16 @@ export function runInterventionGovernor(
   let selectedUtility = 0.0;
   let intrusionCost = 0.0;
   let netUtilityScore = 0.0;
+  let expectedSessionValue = 0.0;
   let actionPayload: DecisionTrace["actionPayload"] = undefined;
   let outcome: DecisionTrace["outcome"] = "NO_INTERVENTION";
 
-  const UTILITY_THRESHOLD = 0.25; // Net utility threshold required to justify user interruption
+  const UTILITY_THRESHOLD = 0.22; // Net utility threshold required to justify user interruption
 
-  if (!policyResult.allowed) {
+  if (!trustGateResult.eligible) {
     governorDecision = "DO_NOTHING";
-    reason = policyResult.reason;
-    outcome = policyResult.status === "BLOCKED" ? "BLOCKED_BY_POLICY" : "NO_INTERVENTION";
+    reason = trustGateResult.reason;
+    outcome = trustGateResult.status === "BLOCKED" ? "BLOCKED_BY_POLICY" : "NO_INTERVENTION";
   } else if (frictionResult.friction === "NONE") {
     governorDecision = "DO_NOTHING";
     reason = "User navigating smoothly. Restraint applied (no unsolicited interruptions).";
@@ -281,8 +350,9 @@ export function runInterventionGovernor(
     selectedUtility = topCandidate.expectedUsefulness;
     intrusionCost = topCandidate.intrusionCost;
     netUtilityScore = topCandidate.netUtilityScore;
+    expectedSessionValue = topCandidate.expectedSessionValue;
     actionPayload = topCandidate.payload;
-    reason = `Ranked #1 action: ${topCandidate.action} (Net Utility: ${topCandidate.netUtilityScore.toFixed(2)}, Usefulness: ${topCandidate.expectedUsefulness.toFixed(2)}, Cost: ${topCandidate.intrusionCost.toFixed(2)}). ${topCandidate.justification}.`;
+    reason = `Ranked #1 action: ${topCandidate.action} (Net Utility: ${topCandidate.netUtilityScore.toFixed(2)}, Value Uplift: +${topCandidate.expectedSessionValue.toFixed(2)}, Cost: ${topCandidate.intrusionCost.toFixed(2)}). ${topCandidate.justification}.`;
     outcome = "INTERVENTION_OFFERED";
   } else {
     // Utility does not outweigh intrusion cost
@@ -308,8 +378,10 @@ export function runInterventionGovernor(
     selectedUtility,
     intrusionCost,
     netUtilityScore,
-    policyStatus: policyResult.status,
-    policyReason: policyResult.reason,
+    expectedSessionValue,
+    policyStatus: trustGateResult.status,
+    policyReason: trustGateResult.reason,
+    trustGate: trustGateResult,
     reason,
     expectedHelpValue,
     structuredState: features.structuredState,

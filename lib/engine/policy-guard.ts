@@ -1,16 +1,13 @@
-import { FrictionType, SessionIntent, SessionFeatures } from "../types/models";
+import { FrictionType, SessionIntent, SessionFeatures, TrustGateResult } from "../types/models";
 
 export interface DecisionContext {
   cooldownActive?: boolean;
   dismissalCount?: number;
   remainingInterventionBudget?: number;
   internalTestOverride?: boolean;
-}
-
-export interface PolicyCheckResult {
-  allowed: boolean;
-  status: "ALLOWED" | "BLOCKED" | "SUPPRESSED";
-  reason: string;
+  userSelfExcluded?: boolean;
+  isUnderage?: boolean;
+  atRiskGamblingSignal?: boolean;
 }
 
 export function evaluatePolicyGuard(
@@ -19,56 +16,92 @@ export function evaluatePolicyGuard(
   confidence: number,
   features: SessionFeatures,
   context?: DecisionContext
-): PolicyCheckResult {
-  // Scenario D explicit override for internal demo test harness only
+): TrustGateResult {
+  // Scenario D explicit override for internal test harness only
   if (context?.internalTestOverride) {
     return {
-      allowed: false,
+      eligible: false,
       status: "BLOCKED",
+      gateName: "RESPONSIBLE_PLAY",
       reason: "Responsible-play policy rule: Cooldown guard active. Intervention suppressed to protect user agency.",
     };
   }
 
-  // 1. SessionStore Cooldown & Fatigue State (Authoritative Server State)
+  // 1. Critical Compliance Gates (Responsible Gaming, Self-Exclusion, 18+)
+  if (context?.userSelfExcluded || context?.atRiskGamblingSignal) {
+    return {
+      eligible: false,
+      status: "BLOCKED",
+      gateName: "RESPONSIBLE_PLAY",
+      reason: "Trust & Safety Gate: Responsible gaming safety flag active. All proactive interventions strictly suspended.",
+    };
+  }
+
+  if (context?.isUnderage) {
+    return {
+      eligible: false,
+      status: "BLOCKED",
+      gateName: "CONSENT_ELIGIBILITY",
+      reason: "Compliance Gate: 18+ verification check required.",
+    };
+  }
+
+  // 2. Strict Confirmation Zero-Pressure Rule
+  // At the confirmation step, NEVER push or urge. Only allow CLARIFY_FINAL_STEP if transparent ambiguity exists.
+  if (features.structuredState.journeyStage === "CONFIRMATION" && friction !== "FINAL_STEP_DROP_OFF" && friction !== "DECISION_HESITATION") {
+    return {
+      eligible: false,
+      status: "SUPPRESSED",
+      gateName: "CONFIRMATION_ZERO_PRESSURE",
+      reason: "Zero-Pressure Policy: User is in final confirmation stage without detected friction. Proactive prompts prohibited.",
+    };
+  }
+
+  // 3. SessionStore Cooldown & Fatigue State
   if (context?.cooldownActive || (context?.dismissalCount && context.dismissalCount >= 1) || features.priorInterventionDismissals >= 1) {
     return {
-      allowed: false,
+      eligible: false,
       status: "SUPPRESSED",
+      gateName: "FATIGUE",
       reason: `Fatigue policy: User dismissed previous intervention (${context?.dismissalCount || features.priorInterventionDismissals} dismissal(s)). Cooldown active to prevent intrusion.`,
     };
   }
 
-  // 2. Intervention Budget Exhaustion
+  // 4. Intervention Budget Exhaustion
   if (context?.remainingInterventionBudget !== undefined && context.remainingInterventionBudget <= 0) {
     return {
-      allowed: false,
+      eligible: false,
       status: "SUPPRESSED",
-      reason: "Intervention budget exhausted: Max in-session assistance allowance reached.",
+      gateName: "FATIGUE",
+      reason: "Intervention budget exhausted: Max in-session assistance allowance reached (3/3).",
     };
   }
 
-  // 3. Early session exploration protection (insufficient context)
-  if (features.sessionDepth < 3 && friction !== "DECISION_HESITATION") {
+  // 5. Early session exploration protection
+  if (features.sessionDepth < 3 && friction !== "DECISION_HESITATION" && friction !== "FINAL_STEP_DROP_OFF") {
     return {
-      allowed: false,
+      eligible: false,
       status: "SUPPRESSED",
+      gateName: "UNCERTAINTY",
       reason: "Context policy: Minimum session exploration threshold not met.",
     };
   }
 
-  // 4. Confidence threshold guard
+  // 6. Confidence threshold guard
   if (confidence < 0.60 && friction !== "NONE") {
     return {
-      allowed: false,
+      eligible: false,
       status: "SUPPRESSED",
+      gateName: "UNCERTAINTY",
       reason: "Uncertainty guard: Model confidence below minimum threshold (0.60).",
     };
   }
 
-  // 5. Normal Responsible AI clearance
+  // 7. Full clearance through Trust & Eligibility Gate
   return {
-    allowed: true,
+    eligible: true,
     status: "ALLOWED",
-    reason: "Passed all user-agency, fatigue, and responsible-play guardrails.",
+    gateName: "RESPONSIBLE_PLAY",
+    reason: "Passed all Trust & Eligibility, user-agency, fatigue, and zero-pressure guardrails.",
   };
 }

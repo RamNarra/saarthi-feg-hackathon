@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { SessionEvent } from "@/lib/types/events";
 import { DecisionTrace } from "@/lib/types/models";
 import { createSaarthiClient, SaarthiDecisionResponse } from "@/lib/sdk/saarthi-client";
 import { DecisionTracePanel } from "../components/decision-trace";
 import { SessionReplayTimeline } from "../components/session-replay";
 import { InterventionModal } from "../components/intervention-modal";
-import { Play, RotateCcw, ShieldAlert, Sparkles, CheckCircle2, ChevronRight, Search, ArrowLeft, BarChart2, Check, X } from "lucide-react";
+import { Play, RotateCcw, ShieldAlert, Sparkles, CheckCircle2, ChevronRight, Search, ArrowLeft, BarChart2, Check, X, Layers, AlertCircle } from "lucide-react";
 
 export default function SessionSimulatorPage() {
   const [events, setEvents] = useState<SessionEvent[]>([]);
@@ -41,15 +41,23 @@ export default function SessionSimulatorPage() {
       selectedUtility: (data.decision as any).selectedUtility || data.decision.expectedHelpValue || 0,
       intrusionCost: (data.decision as any).intrusionCost || 0.25,
       netUtilityScore: (data.decision as any).netUtilityScore || 0,
+      expectedSessionValue: (data.decision as any).expectedSessionValue || 0,
       policyStatus: data.policy.status,
       policyReason: data.policy.reason,
+      trustGate: {
+        eligible: data.policy.status === "ALLOWED",
+        status: data.policy.status,
+        gateName: "RESPONSIBLE_PLAY",
+        reason: data.policy.reason,
+      },
       reason: data.friction.signals?.[0] || "Evaluation completed via Saarthi API",
       expectedHelpValue: data.decision.expectedHelpValue,
       structuredState: (data as any).structuredState || {
-        journeyStage: "ACTIVE_COMPARISON",
+        journeyStage: "DISCOVERY",
         activeEntities: [],
         comparisonSet: [],
         inferredGoal: "In-session exploration",
+        finalStepContext: { stepName: "NONE", timeInConfirmationSec: 0, unacknowledgedChange: false, hesitationSignals: [] },
         frictionHistory: [],
         interventionHistory: [],
       },
@@ -112,7 +120,7 @@ export default function SessionSimulatorPage() {
   };
 
   // Scenario Scripts using Saarthi Client SDK
-  const runScriptedScenario = async (scenario: "A" | "B" | "C" | "D") => {
+  const runScriptedScenario = async (scenario: "A" | "B" | "C" | "D" | "E") => {
     resetSession();
     setIsPlaying(true);
     setActiveScenario(scenario);
@@ -126,7 +134,7 @@ export default function SessionSimulatorPage() {
 
     if (scenario === "A") {
       // Scenario A: Normal Browsing -> DO NOTHING
-      const scriptEvents: Array<{ type: SessionEvent["eventType"]; id?: string; name?: string }> = [
+      const scriptEvents: Array<{ type: SessionEvent["eventType"]; id?: string; name?: string; meta?: any }> = [
         { type: "SESSION_START" },
         { type: "EVENT_VIEW", id: "arsenal", name: "Arsenal vs Chelsea" },
         { type: "STATS_VIEW", id: "arsenal", name: "Match Statistics" },
@@ -146,15 +154,16 @@ export default function SessionSimulatorPage() {
           eventType: step.type,
           entityId: step.id,
           entityName: step.name,
+          metadata: step.meta || {},
         };
         accEvents = [...accEvents, ev];
         setEvents([...accEvents]);
-        const data = await client.trackEvent(step.type, step.id, step.name);
+        const data = await client.trackEvent(step.type, step.id, step.name, step.meta);
         setCurrentTrace(mapApiResponseToTrace(data, accEvents));
       }
     } else if (scenario === "B") {
       // Scenario B: Friction Resolution (Compare loop) -> HELP
-      const scriptEvents: Array<{ type: SessionEvent["eventType"]; id?: string; name?: string }> = [
+      const scriptEvents: Array<{ type: SessionEvent["eventType"]; id?: string; name?: string; meta?: any }> = [
         { type: "SESSION_START" },
         { type: "EVENT_VIEW", id: "arsenal", name: "Arsenal" },
         { type: "STATS_VIEW", id: "arsenal", name: "Arsenal xG & Squad" },
@@ -179,10 +188,11 @@ export default function SessionSimulatorPage() {
           eventType: step.type,
           entityId: step.id,
           entityName: step.name,
+          metadata: step.meta || {},
         };
         accEvents = [...accEvents, ev];
         setEvents([...accEvents]);
-        const data = await client.trackEvent(step.type, step.id, step.name);
+        const data = await client.trackEvent(step.type, step.id, step.name, step.meta);
         const trace = mapApiResponseToTrace(data, accEvents);
         setCurrentTrace(trace);
         if (data.decision.action === "HELP") {
@@ -190,7 +200,7 @@ export default function SessionSimulatorPage() {
         }
       }
     } else if (scenario === "C") {
-      // Scenario C: User Rejects Help -> Policy Fatigue Suppression via /interventions/outcome API
+      // Scenario C: User Rejects Help -> Policy Fatigue Suppression
       const scriptEvents: Array<{ type: SessionEvent["eventType"]; id?: string; name?: string }> = [
         { type: "SESSION_START" },
         { type: "EVENT_VIEW", id: "arsenal", name: "Arsenal" },
@@ -214,8 +224,6 @@ export default function SessionSimulatorPage() {
         setCurrentTrace(mapApiResponseToTrace(data, accEvents));
       }
 
-      // Submit dismissals via outcome API to activate fatigue cooldown in SessionStore
-      await client.recordOutcome("DISMISSED", "Intervention dismissed by user");
       await client.recordOutcome("DISMISSED", "Intervention dismissed by user");
 
       const subsequentEvents: Array<{ type: SessionEvent["eventType"]; id?: string; name?: string }> = [
@@ -243,8 +251,7 @@ export default function SessionSimulatorPage() {
         setCurrentTrace(mapApiResponseToTrace(data, accEvents));
       }
     } else if (scenario === "D") {
-      // Scenario D: Dismissal Fatigue Guard Suppression
-      await client.recordOutcome("DISMISSED");
+      // Scenario D: Trust & Safety Suppression
       await client.recordOutcome("DISMISSED");
 
       const scriptEvents: Array<{ type: SessionEvent["eventType"]; id?: string; name?: string }> = [
@@ -275,6 +282,38 @@ export default function SessionSimulatorPage() {
         const data = await client.trackEvent(step.type, step.id, step.name);
         setCurrentTrace(mapApiResponseToTrace(data, accEvents));
       }
+    } else if (scenario === "E") {
+      // Scenario E: Final-Step Drop-Off Resolution (Confirmation Step Clarity)
+      const scriptEvents: Array<{ type: SessionEvent["eventType"]; id?: string; name?: string; meta?: any }> = [
+        { type: "SESSION_START" },
+        { type: "EVENT_VIEW", id: "arsenal", name: "Arsenal vs Chelsea" },
+        { type: "MARKET_VIEW", id: "market_confirm_slip", name: "Review Confirmation Slip", meta: { isSlipReview: true, oddsChanged: true } },
+        { type: "BACK" },
+        { type: "MARKET_VIEW", id: "market_confirm_slip", name: "Review Confirmation Slip", meta: { isSlipReview: true, oddsChanged: true } },
+      ];
+
+      let accEvents: SessionEvent[] = [];
+      for (const step of scriptEvents) {
+        await delay(450);
+        const ev: SessionEvent = {
+          id: `ev_scE_${Date.now()}`,
+          sessionId: activeSessionId,
+          userId: "usr_script_demo",
+          timestamp: new Date().toISOString(),
+          eventType: step.type,
+          entityId: step.id,
+          entityName: step.name,
+          metadata: step.meta || {},
+        };
+        accEvents = [...accEvents, ev];
+        setEvents([...accEvents]);
+        const data = await client.trackEvent(step.type, step.id, step.name, step.meta);
+        const trace = mapApiResponseToTrace(data, accEvents);
+        setCurrentTrace(trace);
+        if (data.decision.action === "HELP") {
+          setShowIntervention(true);
+        }
+      }
     }
 
     setIsPlaying(false);
@@ -282,8 +321,8 @@ export default function SessionSimulatorPage() {
 
   const handleInterventionAccept = async () => {
     setShowIntervention(false);
-    await saarthiClient.recordOutcome("ACCEPTED", "User accepted side-by-side comparison");
-    await triggerEvent("INTERVENTION_ACCEPTED", "compare_widget", "Side-by-Side Comparison Accepted");
+    await saarthiClient.recordOutcome("ACCEPTED", "User accepted clarification");
+    await triggerEvent("INTERVENTION_ACCEPTED", "clarify_widget", "Action Clarification Accepted");
     setSessionCompleted(true);
   };
 
@@ -291,7 +330,7 @@ export default function SessionSimulatorPage() {
     setShowIntervention(false);
     setUserDismissalCount((prev) => prev + 1);
     await saarthiClient.recordOutcome("DISMISSED", "Intervention dismissed by user");
-    await triggerEvent("INTERVENTION_DISMISSED", "compare_widget", "Intervention Dismissed by User");
+    await triggerEvent("INTERVENTION_DISMISSED", "clarify_widget", "Intervention Dismissed by User");
   };
 
   return (
@@ -302,11 +341,11 @@ export default function SessionSimulatorPage() {
           <div className="flex items-center gap-2">
             <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Live Session Simulator</h1>
             <span className="text-xs font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-              Dogfooding Saarthi SDK &amp; REST API
+              Saarthi v2 Platform
             </span>
           </div>
           <p className="mt-1 text-sm text-slate-400">
-            Simulate live user events streaming through the Saarthi Client SDK into the backend Decision API.
+            Simulate live user events streaming through the Saarthi Client SDK into the backend Decision API across all 7 journey stages.
           </p>
         </div>
 
@@ -327,7 +366,7 @@ export default function SessionSimulatorPage() {
           <span>Preset Demo Scenarios</span>
           <span className="text-[11px] text-cyan-400">Click to stream events via Saarthi SDK</span>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           <button
             onClick={() => runScriptedScenario("A")}
             disabled={isPlaying}
@@ -363,6 +402,23 @@ export default function SessionSimulatorPage() {
           </button>
 
           <button
+            onClick={() => runScriptedScenario("E")}
+            disabled={isPlaying}
+            className={`p-3 rounded-xl border text-left transition-all ${
+              activeScenario === "E"
+                ? "bg-slate-800 border-indigo-500 text-white"
+                : "bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-300"
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-bold font-mono text-indigo-400">Scenario E</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 font-mono font-bold">HELP</span>
+            </div>
+            <div className="text-xs font-semibold text-white">Final-Step Drop-Off</div>
+            <div className="text-[11px] text-slate-400 mt-1">Confirmation hesitation triggers transparent terms summary.</div>
+          </button>
+
+          <button
             onClick={() => runScriptedScenario("C")}
             disabled={isPlaying}
             className={`p-3 rounded-xl border text-left transition-all ${
@@ -392,7 +448,7 @@ export default function SessionSimulatorPage() {
               <span className="text-xs font-bold font-mono text-rose-400">Scenario D</span>
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 font-mono font-bold">SUPPRESSED</span>
             </div>
-            <div className="text-xs font-semibold text-white">Policy / Fatigue Guard</div>
+            <div className="text-xs font-semibold text-white">Trust / Fatigue Gate</div>
             <div className="text-[11px] text-slate-400 mt-1">Fatigue cooldown actively suppresses candidate interruption.</div>
           </button>
         </div>
@@ -432,10 +488,10 @@ export default function SessionSimulatorPage() {
                     Stats
                   </button>
                   <button
-                    onClick={() => triggerEvent("MARKET_VIEW", "arsenal", "Arsenal Markets")}
-                    className="px-2.5 py-1 rounded bg-slate-800 text-slate-300 text-[11px] hover:bg-slate-700 transition-colors"
+                    onClick={() => triggerEvent("MARKET_VIEW", "market_slip_arsenal", "Review Confirmation Slip", { isSlipReview: true, oddsChanged: true })}
+                    className="px-2.5 py-1 rounded bg-indigo-950 text-indigo-300 border border-indigo-500/30 text-[11px] hover:bg-indigo-900 transition-colors"
                   >
-                    Markets
+                    Review Slip
                   </button>
                 </div>
               </div>
@@ -459,31 +515,10 @@ export default function SessionSimulatorPage() {
                     Stats
                   </button>
                   <button
-                    onClick={() => triggerEvent("MARKET_VIEW", "liverpool", "Liverpool Markets")}
-                    className="px-2.5 py-1 rounded bg-slate-800 text-slate-300 text-[11px] hover:bg-slate-700 transition-colors"
+                    onClick={() => triggerEvent("MARKET_VIEW", "market_slip_liverpool", "Review Confirmation Slip", { isSlipReview: true })}
+                    className="px-2.5 py-1 rounded bg-indigo-950 text-indigo-300 border border-indigo-500/30 text-[11px] hover:bg-indigo-900 transition-colors"
                   >
-                    Markets
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 hover:border-slate-700 transition-all">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-white text-sm">Manchester City</span>
-                  <span className="text-xs font-mono text-blue-400">3rd • 54 pts</span>
-                </div>
-                <div className="mt-2.5 flex items-center gap-2">
-                  <button
-                    onClick={() => triggerEvent("EVENT_VIEW", "man_city", "Manchester City")}
-                    className="px-2.5 py-1 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/30 text-[11px] font-medium hover:bg-cyan-900 transition-colors"
-                  >
-                    View Match
-                  </button>
-                  <button
-                    onClick={() => triggerEvent("STATS_VIEW", "man_city", "Man City Stats")}
-                    className="px-2.5 py-1 rounded bg-slate-800 text-slate-300 text-[11px] hover:bg-slate-700 transition-colors"
-                  >
-                    Stats
+                    Review Slip
                   </button>
                 </div>
               </div>
@@ -513,7 +548,7 @@ export default function SessionSimulatorPage() {
                 className="flex-1 px-3 py-1.5 rounded-lg bg-emerald-950 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-900 text-xs font-medium transition-colors flex items-center justify-center gap-1"
               >
                 <Check className="w-3.5 h-3.5" />
-                <span>Save</span>
+                <span>Confirm</span>
               </button>
             </div>
           </div>

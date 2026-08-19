@@ -8,6 +8,7 @@
   "/api/v1/session/[id]/state/route": "app/api/v1/session/[id]/state/route.js",
   "/api/v1/session/events/route": "app/api/v1/session/events/route.js",
   "/architecture/page": "app/architecture/page.js",
+  "/impact/page": "app/impact/page.js",
   "/models/page": "app/models/page.js",
   "/page": "app/page.js",
   "/session/page": "app/session/page.js"
